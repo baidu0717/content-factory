@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lsof:*)",
+      "Bash(ps:*)",
+      "Bash(open http://localhost:3000)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

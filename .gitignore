@@ -1,0 +1,12 @@
+node_modules
+.next
+.env.local
+.env*.local
+*.tsbuildinfo
+.DS_Store
+
+# SQLite 数据库文件
+data/
+*.db
+*.db-shm
+*.db-wal
