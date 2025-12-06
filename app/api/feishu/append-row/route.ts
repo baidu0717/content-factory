@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { getValidAccessToken } from '@/lib/feishu-auth'
+import axios from 'axios'
+import FormData from 'form-data'
 
 // 飞书API配置
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
@@ -30,17 +32,19 @@ interface AppendRowRequest {
 async function downloadImage(imageUrl: string): Promise<Buffer> {
   console.log('[图片下载] 下载图片:', imageUrl)
 
-  const response = await fetch(imageUrl, {
-    // @ts-ignore
-    agent: proxyAgent,
-  })
+  try {
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      httpsAgent: proxyAgent,
+      timeout: 30000, // 30秒超时
+    })
 
-  if (!response.ok) {
-    throw new Error(`下载图片失败: ${response.statusText}`)
+    console.log('[图片下载] 下载成功，大小:', response.data.length, 'bytes')
+    return Buffer.from(response.data)
+  } catch (error) {
+    console.error('[图片下载] 下载失败:', error)
+    throw new Error(`下载图片失败: ${error instanceof Error ? error.message : String(error)}`)
   }
-
-  const arrayBuffer = await response.arrayBuffer()
-  return Buffer.from(arrayBuffer)
 }
 
 /**
@@ -55,7 +59,6 @@ async function uploadImageToFeishu(
   console.log('[飞书API] 上传图片到飞书:', fileName, '大小:', imageBuffer.length, 'bytes')
 
   try {
-    const FormData = require('form-data')
     const form = new FormData()
 
     // 飞书上传API需要的参数
@@ -65,25 +68,22 @@ async function uploadImageToFeishu(
     form.append('size', String(imageBuffer.length))
     form.append('file', imageBuffer, { filename: fileName })
 
-    const response = await fetch(`${FEISHU_API_URL}/drive/v1/medias/upload_all`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        ...form.getHeaders(),
-      },
-      body: form,
-      // @ts-ignore
-      agent: proxyAgent,
-    })
+    // 使用axios上传，支持form-data
+    const response = await axios.post(
+      `${FEISHU_API_URL}/drive/v1/medias/upload_all`,
+      form,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          ...form.getHeaders(),
+        },
+        httpsAgent: proxyAgent,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      }
+    )
 
-    // 先检查HTTP状态码
-    if (!response.ok) {
-      const text = await response.text()
-      console.error('[飞书API] HTTP错误:', response.status, text)
-      throw new Error(`HTTP ${response.status}: ${text}`)
-    }
-
-    const data = await response.json()
+    const data = response.data
 
     if (data.code !== 0) {
       console.error('[飞书API] 上传图片失败:', data)
@@ -215,10 +215,11 @@ export async function POST(request: NextRequest) {
 
     // 准备多维表格记录数据
     // 注意：字段名必须与多维表格中的字段名完全一致
+    // URL类型字段格式：{ link: "url", text: "显示文本" } 或 { link: "url" }
+    // 文本/多行文本类型：直接传字符串
     // 附件类型字段格式：[{ file_token: "xxx" }]
-    // 空值字段不传递，避免飞书报错
     const recordFields: Record<string, any> = {
-      '笔记链接': { link: url },
+      '笔记链接': url,  // 多行文本类型，直接传字符串
       '标题': title,
       '正文': content || '',
       '话题标签': tags || '',
@@ -228,6 +229,8 @@ export async function POST(request: NextRequest) {
     if (fileTokens[0]) recordFields['封面'] = [{ file_token: fileTokens[0] }]
     if (fileTokens[1]) recordFields['图片 2'] = [{ file_token: fileTokens[1] }]
     if (fileTokens[2]) recordFields['图片 3'] = [{ file_token: fileTokens[2] }]
+
+    console.log('[飞书导出API] 准备写入的字段:', JSON.stringify(recordFields, null, 2))
 
     // 追加到多维表格
     await appendRecordToBitable(accessToken, appToken, tableId, recordFields)

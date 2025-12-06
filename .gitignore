@@ -10,3 +10,4 @@ data/
 *.db
 *.db-shm
 *.db-wal
+.feishu-token.json

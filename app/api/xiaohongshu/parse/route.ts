@@ -85,9 +85,42 @@ export async function POST(request: NextRequest) {
     // 解析成功的响应
     const data = JSON.parse(responseText)
 
-    // 提取标题、正文和图片
-    const title = data.text || '未获取到标题'
-    const content = data.text || ''
+    // 从text中提取标题、正文和话题标签
+    const rawText = data.text || ''
+
+    // 提取话题标签 (格式: #xxx[话题]# 或 #xxx#)
+    const tagRegex = /#[^#]+?(?:\[话题\])?#/g
+    const tags = rawText.match(tagRegex) || []
+    const tagsString = tags.join(' ')
+
+    // 移除话题标签,得到纯文本
+    const textWithoutTags = rawText.replace(tagRegex, '').trim()
+
+    // 分离标题和正文 (通常第一句话是标题,|||可能是分隔符)
+    let title = ''
+    let content = ''
+
+    if (textWithoutTags.includes('|||')) {
+      // 如果有|||分隔符,按它分割
+      const parts = textWithoutTags.split('|||')
+      title = parts[0].trim()
+      content = parts.slice(1).join('|||').trim()
+    } else {
+      // 否则,取第一行或前50个字符作为标题
+      const lines = textWithoutTags.split('\n').filter(line => line.trim())
+      if (lines.length > 0) {
+        title = lines[0].trim()
+        content = lines.slice(1).join('\n').trim()
+      } else {
+        title = textWithoutTags.substring(0, 50).trim()
+        content = textWithoutTags.substring(50).trim()
+      }
+    }
+
+    // 如果正文为空,使用标题作为正文
+    if (!content) {
+      content = title
+    }
 
     // 只提取图片类型的 media
     const images = data.medias
@@ -107,6 +140,8 @@ export async function POST(request: NextRequest) {
 
     console.log('[小红书解析] 解析成功')
     console.log('[小红书解析] 标题:', title)
+    console.log('[小红书解析] 正文:', content)
+    console.log('[小红书解析] 话题标签:', tagsString)
     console.log('[小红书解析] 图片数量:', images.length)
 
     // 返回格式化的数据
@@ -115,6 +150,7 @@ export async function POST(request: NextRequest) {
       data: {
         title,
         content,
+        tags: tagsString,
         images,
         id: data.id,
         createdAt: data.created_at,

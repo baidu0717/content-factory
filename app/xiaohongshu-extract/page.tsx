@@ -62,6 +62,14 @@ export default function XiaohongshuExtractPage() {
   const [savedToFeishu, setSavedToFeishu] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>([])
 
+  // 飞书登录状态
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isCheckingLogin, setIsCheckingLogin] = useState(true)
+
+  // 飞书表格配置
+  const [appToken, setAppToken] = useState('')
+  const [tableId, setTableId] = useState('')
+
   // 从 localStorage 加载历史记录
   useEffect(() => {
     const savedHistory = localStorage.getItem('xiaohongshu_extract_history')
@@ -72,7 +80,74 @@ export default function XiaohongshuExtractPage() {
         console.error('加载历史记录失败:', e)
       }
     }
+
+    // 加载飞书表格配置
+    const savedAppToken = localStorage.getItem('feishu_app_token')
+    const savedTableId = localStorage.getItem('feishu_table_id')
+    if (savedAppToken) setAppToken(savedAppToken)
+    if (savedTableId) setTableId(savedTableId)
   }, [])
+
+  // 检查登录状态
+  useEffect(() => {
+    checkLoginStatus()
+
+    // 检查URL参数中的认证状态
+    const params = new URLSearchParams(window.location.search)
+    const authStatus = params.get('auth')
+
+    if (authStatus === 'success') {
+      setError('')
+      // 清除URL参数
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (authStatus === 'error') {
+      const message = params.get('message') || '登录失败'
+      setError(`飞书登录失败: ${message}`)
+      // 清除URL参数
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  // 检查登录状态
+  const checkLoginStatus = async () => {
+    try {
+      const response = await fetch('/api/auth/status')
+      const data = await response.json()
+      setIsLoggedIn(data.loggedIn || false)
+    } catch (err) {
+      console.error('检查登录状态失败:', err)
+      setIsLoggedIn(false)
+    } finally {
+      setIsCheckingLogin(false)
+    }
+  }
+
+  // 登录飞书
+  const handleFeishuLogin = () => {
+    window.location.href = '/api/auth/login'
+  }
+
+  // 退出登录
+  const handleFeishuLogout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setIsLoggedIn(false)
+        setAppToken('')
+        setTableId('')
+        localStorage.removeItem('feishu_app_token')
+        localStorage.removeItem('feishu_table_id')
+        console.log('退出登录成功')
+      }
+    } catch (err) {
+      console.error('退出登录失败:', err)
+    }
+  }
 
   // 保存历史记录到 localStorage
   const saveToHistory = (note: XiaohongshuNote, url: string) => {
@@ -153,14 +228,30 @@ export default function XiaohongshuExtractPage() {
   const handleSaveToFeishu = async () => {
     if (!extractedData) return
 
+    // 检查登录状态
+    if (!isLoggedIn) {
+      setError('请先登录飞书账号')
+      return
+    }
+
+    // 检查表格配置
+    if (!appToken.trim() || !tableId.trim()) {
+      setError('请先配置飞书表格信息')
+      return
+    }
+
     setIsSavingToFeishu(true)
     setError('')
 
     try {
       console.log('[飞书] 开始保存到飞书...')
 
+      // 保存表格配置到 localStorage
+      localStorage.setItem('feishu_app_token', appToken.trim())
+      localStorage.setItem('feishu_table_id', tableId.trim())
+
       // 准备数据
-      const tags = extractedData.tagList?.map((tag) => tag.name).join(' ') || ''
+      const tags = extractedData.tags || ''
 
       const response = await fetch('/api/feishu/append-row', {
         method: 'POST',
@@ -170,13 +261,22 @@ export default function XiaohongshuExtractPage() {
         body: JSON.stringify({
           title: extractedData.title,
           images: extractedData.images || [],
-          content: extractedData.desc || '',
+          content: extractedData.content || '',
           tags: tags,
           url: inputUrl.trim(),
+          appToken: appToken.trim(),
+          tableId: tableId.trim(),
         }),
       })
 
       const data = await response.json()
+
+      // 处理需要重新登录的情况
+      if (data.needLogin) {
+        setIsLoggedIn(false)
+        setError('登录已过期，请重新登录')
+        return
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || '保存到飞书失败')
@@ -221,6 +321,75 @@ export default function XiaohongshuExtractPage() {
             提取笔记内容 · 保存到飞书表格 · 一键跳转复刻
           </p>
         </div>
+
+        {/* 飞书登录和配置区域 */}
+        <GlassCard className="p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+              <Database className="w-5 h-5 mr-2 text-blue-500" />
+              飞书配置
+            </h2>
+            {isCheckingLogin ? (
+              <span className="text-sm text-gray-500">检查登录状态...</span>
+            ) : isLoggedIn ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-green-600 flex items-center">
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  已登录
+                </span>
+                <button
+                  onClick={handleFeishuLogout}
+                  className="px-3 py-1.5 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all text-sm"
+                >
+                  退出登录
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleFeishuLogin}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center transition-all text-sm"
+              >
+                <User className="w-4 h-4 mr-1" />
+                登录飞书
+              </button>
+            )}
+          </div>
+
+          {isLoggedIn && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  表格 App Token
+                </label>
+                <input
+                  type="text"
+                  value={appToken}
+                  onChange={(e) => setAppToken(e.target.value)}
+                  placeholder="NNd8bJYazaBwHAsZ2z2cqsvmnqf"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  表格 Table ID
+                </label>
+                <input
+                  type="text"
+                  value={tableId}
+                  onChange={(e) => setTableId(e.target.value)}
+                  placeholder="tblu1m2GPcFRNSPE"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {!isLoggedIn && !isCheckingLogin && (
+            <p className="text-sm text-gray-500 mt-2">
+              请先登录飞书账号以使用保存到表格功能
+            </p>
+          )}
+        </GlassCard>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 左侧：输入和操作 */}

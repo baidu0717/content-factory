@@ -63,15 +63,45 @@ export function isTokenExpired(token: TokenInfo): boolean {
 }
 
 /**
+ * 获取 app_access_token（应用级别token）
+ */
+async function getAppAccessToken(): Promise<string> {
+  const response = await fetch(`${FEISHU_API_URL}/auth/v3/app_access_token/internal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      app_id: FEISHU_APP_ID,
+      app_secret: FEISHU_APP_SECRET,
+    }),
+    // @ts-ignore
+    agent: proxyAgent,
+  })
+
+  const data = await response.json()
+
+  if (data.code !== 0) {
+    throw new Error(`获取app_access_token失败: ${data.msg}`)
+  }
+
+  return data.app_access_token
+}
+
+/**
  * 刷新access_token
  */
 export async function refreshAccessToken(refreshToken: string): Promise<any> {
   console.log('[Token] 刷新access_token...')
 
+  // 先获取 app_access_token
+  const appAccessToken = await getAppAccessToken()
+
   const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/refresh_access_token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${appAccessToken}`,
     },
     body: JSON.stringify({
       grant_type: 'refresh_token',
@@ -85,7 +115,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<any> {
 
   if (data.code !== 0) {
     console.error('[Token] 刷新token失败:', data)
-    throw new Error(`刷新token失败: ${data.msg}`)
+    throw new Error(`刷新token失败: ${data.message || data.msg}`)
   }
 
   console.log('[Token] Token刷新成功')

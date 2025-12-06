@@ -15,19 +15,19 @@ const proxyAgent = HTTPS_PROXY ? new HttpsProxyAgent(HTTPS_PROXY) : undefined
 const TOKEN_FILE = join(process.cwd(), '.feishu-token.json')
 
 /**
- * 用code换取user_access_token
+ * 获取 app_access_token（应用级别token）
  */
-async function getUserAccessToken(code: string) {
-  console.log('[飞书OAuth] 用code换取access_token...')
+async function getAppAccessToken(): Promise<string> {
+  console.log('[飞书OAuth] 获取app_access_token...')
 
-  const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/access_token`, {
+  const response = await fetch(`${FEISHU_API_URL}/auth/v3/app_access_token/internal`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      grant_type: 'authorization_code',
-      code: code,
+      app_id: FEISHU_APP_ID,
+      app_secret: FEISHU_APP_SECRET,
     }),
     // @ts-ignore
     agent: proxyAgent,
@@ -36,11 +36,47 @@ async function getUserAccessToken(code: string) {
   const data = await response.json()
 
   if (data.code !== 0) {
-    console.error('[飞书OAuth] 换取token失败:', data)
-    throw new Error(`换取token失败: ${data.msg}`)
+    console.error('[飞书OAuth] 获取app_access_token失败:', data)
+    throw new Error(`获取app_access_token失败: ${data.msg}`)
   }
 
-  console.log('[飞书OAuth] 成功获取access_token')
+  console.log('[飞书OAuth] app_access_token获取成功')
+  return data.app_access_token
+}
+
+/**
+ * 用code换取user_access_token
+ */
+async function getUserAccessToken(code: string) {
+  console.log('[飞书OAuth] 用code换取user_access_token...')
+
+  // 先获取 app_access_token
+  const appAccessToken = await getAppAccessToken()
+
+  const requestBody = {
+    grant_type: 'authorization_code',
+    code: code,
+  }
+
+  const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/access_token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${appAccessToken}`,
+    },
+    body: JSON.stringify(requestBody),
+    // @ts-ignore
+    agent: proxyAgent,
+  })
+
+  const data = await response.json()
+
+  if (data.code !== 0) {
+    console.error('[飞书OAuth] 换取user_access_token失败:', data)
+    throw new Error(`换取token失败: ${data.message || data.msg}`)
+  }
+
+  console.log('[飞书OAuth] 成功获取user_access_token')
   return data.data
 }
 
