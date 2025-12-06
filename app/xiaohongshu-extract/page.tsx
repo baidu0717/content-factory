@@ -160,10 +160,6 @@ export default function XiaohongshuExtractPage() {
       console.log('[飞书] 开始保存到飞书...')
 
       // 准备数据
-      const publishTime = extractedData.time
-        ? new Date(extractedData.time).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
-        : ''
-
       const tags = extractedData.tagList?.map((tag) => tag.name).join(' ') || ''
 
       const response = await fetch('/api/feishu/append-row', {
@@ -173,8 +169,6 @@ export default function XiaohongshuExtractPage() {
         },
         body: JSON.stringify({
           title: extractedData.title,
-          author: extractedData.user?.nickname || '',
-          publishTime: publishTime,
           images: extractedData.images || [],
           content: extractedData.desc || '',
           tags: tags,

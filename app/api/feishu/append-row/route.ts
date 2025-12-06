@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 
 // 飞书API配置
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
@@ -7,11 +8,13 @@ const FEISHU_APP_TOKEN = process.env.FEISHU_APP_TOKEN || '' // 多维表格的 a
 const FEISHU_TABLE_ID = process.env.FEISHU_TABLE_ID || ''   // 数据表的 table_id
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
 
+// 代理配置
+const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
+const proxyAgent = HTTPS_PROXY ? new HttpsProxyAgent(HTTPS_PROXY) : undefined
+
 // 请求参数类型
 interface AppendRowRequest {
   title: string           // 标题
-  author: string          // 作者
-  publishTime: string     // 发布时间
   images: string[]        // 图片URL数组
   content: string         // 正文内容
   tags: string           // 话题标签
@@ -34,6 +37,8 @@ async function getTenantAccessToken(): Promise<string> {
         app_id: FEISHU_APP_ID,
         app_secret: FEISHU_APP_SECRET,
       }),
+      // @ts-ignore
+      agent: proxyAgent,
     })
 
     const data = await response.json()
@@ -75,6 +80,8 @@ async function appendRecordToBitable(
         body: JSON.stringify({
           fields: fields,
         }),
+        // @ts-ignore
+        agent: proxyAgent,
       }
     )
 
@@ -136,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     // 解析请求参数
     const body: AppendRowRequest = await request.json()
-    const { title, author, publishTime, images, content, tags, url } = body
+    const { title, images, content, tags, url } = body
 
     console.log('[飞书导出API] 笔记标题:', title)
     console.log('[飞书导出API] 图片数量:', images.length)
@@ -154,28 +161,19 @@ export async function POST(request: NextRequest) {
 
     // 准备多维表格记录数据
     // 注意：字段名必须与多维表格中的字段名完全一致
-    const now = new Date().toLocaleString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-
-    const recordFields = {
+    // URL类型字段需要使用对象格式 { link: "url" }
+    // 空值字段不传递，避免飞书报错
+    const recordFields: Record<string, any> = {
+      '笔记链接': { link: url },
       '标题': title,
-      '作者': author || '未知',
-      '发布时间': publishTime || '',
-      '图片1': images[0] || '',
-      '图片2': images[1] || '',
-      '图片3': images[2] || '',
-      '正文内容': content || '',
+      '正文': content || '',
       '话题标签': tags || '',
-      '笔记链接': url,
-      '采集时间': now,
     }
+
+    // 只添加非空的图片字段
+    if (images[0]) recordFields['封面'] = { link: images[0] }
+    if (images[1]) recordFields['图片 2'] = { link: images[1] }
+    if (images[2]) recordFields['图片 3'] = { link: images[2] }
 
     // 追加到多维表格
     await appendRecordToBitable(accessToken, FEISHU_APP_TOKEN, FEISHU_TABLE_ID, recordFields)
