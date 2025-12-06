@@ -29,6 +29,7 @@
     "better-sqlite3": "^12.4.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "form-data": "^4.0.5",
     "framer-motion": "^12.23.24",
     "https-proxy-agent": "^7.0.6",
     "lucide-react": "^0.548.0",

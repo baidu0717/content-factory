@@ -272,10 +272,11 @@ export async function POST(request: NextRequest) {
     console.log(`[飞书初始化] 主字段: ${primaryField.field_name} (${primaryField.field_id})`)
 
     // 4. 创建我们需要的其他字段（除了第一个，我们会重命名主字段）
+    // 飞书字段类型：1=文本，15=URL，17=附件
     const fieldsToCreate = [
-      { name: '封面', type: 15 },         // URL类型
-      { name: '图片 2', type: 15 },       // URL类型
-      { name: '图片 3', type: 15 },       // URL类型
+      { name: '封面', type: 17 },         // 附件类型（显示图片预览）
+      { name: '图片 2', type: 17 },       // 附件类型
+      { name: '图片 3', type: 17 },       // 附件类型
       { name: '标题', type: 1 },          // 文本类型
       { name: '正文', type: 1 },          // 文本类型
       { name: '话题标签', type: 1 },      // 文本类型

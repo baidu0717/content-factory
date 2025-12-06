@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { HttpsProxyAgent } from 'https-proxy-agent'
+import { getValidAccessToken } from '@/lib/feishu-auth'
 
 // 飞书API配置
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
-const FEISHU_APP_TOKEN = process.env.FEISHU_APP_TOKEN || '' // 多维表格的 app_token
-const FEISHU_TABLE_ID = process.env.FEISHU_TABLE_ID || ''   // 数据表的 table_id
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
 
 // 代理配置
@@ -19,38 +18,82 @@ interface AppendRowRequest {
   content: string         // 正文内容
   tags: string           // 话题标签
   url: string            // 笔记链接
+  appToken: string       // 多维表格的 app_token
+  tableId: string        // 数据表的 table_id
+}
+
+// getTenantAccessToken 已移除，改用用户授权的 user_access_token
+
+/**
+ * 下载图片
+ */
+async function downloadImage(imageUrl: string): Promise<Buffer> {
+  console.log('[图片下载] 下载图片:', imageUrl)
+
+  const response = await fetch(imageUrl, {
+    // @ts-ignore
+    agent: proxyAgent,
+  })
+
+  if (!response.ok) {
+    throw new Error(`下载图片失败: ${response.statusText}`)
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  return Buffer.from(arrayBuffer)
 }
 
 /**
- * 获取 tenant_access_token
+ * 上传图片到飞书获取file_token
  */
-async function getTenantAccessToken(): Promise<string> {
-  console.log('[飞书API] 获取 tenant_access_token...')
+async function uploadImageToFeishu(
+  token: string,
+  imageBuffer: Buffer,
+  fileName: string,
+  appToken: string
+): Promise<string> {
+  console.log('[飞书API] 上传图片到飞书:', fileName, '大小:', imageBuffer.length, 'bytes')
 
   try {
-    const response = await fetch(`${FEISHU_API_URL}/auth/v3/tenant_access_token/internal`, {
+    const FormData = require('form-data')
+    const form = new FormData()
+
+    // 飞书上传API需要的参数
+    form.append('file_name', fileName)
+    form.append('parent_type', 'bitable_image')
+    form.append('parent_node', appToken)
+    form.append('size', String(imageBuffer.length))
+    form.append('file', imageBuffer, { filename: fileName })
+
+    const response = await fetch(`${FEISHU_API_URL}/drive/v1/medias/upload_all`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        ...form.getHeaders(),
       },
-      body: JSON.stringify({
-        app_id: FEISHU_APP_ID,
-        app_secret: FEISHU_APP_SECRET,
-      }),
+      body: form,
       // @ts-ignore
       agent: proxyAgent,
     })
 
+    // 先检查HTTP状态码
+    if (!response.ok) {
+      const text = await response.text()
+      console.error('[飞书API] HTTP错误:', response.status, text)
+      throw new Error(`HTTP ${response.status}: ${text}`)
+    }
+
     const data = await response.json()
 
     if (data.code !== 0) {
-      throw new Error(`获取token失败: ${data.msg}`)
+      console.error('[飞书API] 上传图片失败:', data)
+      throw new Error(`上传图片失败: ${data.msg}`)
     }
 
-    console.log('[飞书API] token获取成功')
-    return data.tenant_access_token
+    console.log('[飞书API] 图片上传成功, file_token:', data.data.file_token)
+    return data.data.file_token
   } catch (error) {
-    console.error('[飞书API] 获取token失败:', error)
+    console.error('[飞书API] 上传图片异常:', error)
     throw error
   }
 }
@@ -110,43 +153,13 @@ export async function POST(request: NextRequest) {
     console.log('='.repeat(80))
     console.log('[飞书导出API] 收到请求')
 
-    // 验证配置
-    if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: '未配置飞书API密钥，请检查环境变量 FEISHU_APP_ID 和 FEISHU_APP_SECRET',
-        },
-        { status: 500 }
-      )
-    }
-
-    if (!FEISHU_APP_TOKEN) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: '未配置多维表格Token，请检查环境变量 FEISHU_APP_TOKEN',
-        },
-        { status: 500 }
-      )
-    }
-
-    if (!FEISHU_TABLE_ID) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: '未配置数据表ID，请检查环境变量 FEISHU_TABLE_ID',
-        },
-        { status: 500 }
-      )
-    }
-
     // 解析请求参数
     const body: AppendRowRequest = await request.json()
-    const { title, images, content, tags, url } = body
+    const { title, images, content, tags, url, appToken, tableId } = body
 
     console.log('[飞书导出API] 笔记标题:', title)
     console.log('[飞书导出API] 图片数量:', images.length)
+    console.log('[飞书导出API] 目标表格:', appToken, tableId)
 
     // 参数验证
     if (!title || !url) {
@@ -156,12 +169,53 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 获取认证token
-    const accessToken = await getTenantAccessToken()
+    if (!appToken || !tableId) {
+      return NextResponse.json(
+        { success: false, error: '请提供表格Token和表ID' },
+        { status: 400 }
+      )
+    }
+
+    // 获取用户access_token（自动刷新）
+    const accessToken = await getValidAccessToken()
+
+    if (!accessToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: '用户未登录或登录已过期，请重新登录',
+          needLogin: true,
+        },
+        { status: 401 }
+      )
+    }
+
+    console.log('[飞书导出API] 使用用户token操作')
+
+    // 下载并上传图片到飞书
+    console.log('[飞书导出API] 开始处理图片...')
+    const fileTokens: string[] = []
+
+    for (let i = 0; i < Math.min(images.length, 3); i++) {
+      if (images[i]) {
+        try {
+          console.log(`[飞书导出API] 处理第 ${i + 1} 张图片...`)
+          const imageBuffer = await downloadImage(images[i])
+          const fileName = `image_${Date.now()}_${i}.jpg`
+          const fileToken = await uploadImageToFeishu(accessToken, imageBuffer, fileName, appToken)
+          fileTokens.push(fileToken)
+        } catch (error) {
+          console.error(`[飞书导出API] 处理第 ${i + 1} 张图片失败:`, error)
+          // 图片处理失败不影响整体流程，继续处理下一张
+        }
+      }
+    }
+
+    console.log(`[飞书导出API] 成功上传 ${fileTokens.length} 张图片`)
 
     // 准备多维表格记录数据
     // 注意：字段名必须与多维表格中的字段名完全一致
-    // URL类型字段需要使用对象格式 { link: "url" }
+    // 附件类型字段格式：[{ file_token: "xxx" }]
     // 空值字段不传递，避免飞书报错
     const recordFields: Record<string, any> = {
       '笔记链接': { link: url },
@@ -170,13 +224,13 @@ export async function POST(request: NextRequest) {
       '话题标签': tags || '',
     }
 
-    // 只添加非空的图片字段
-    if (images[0]) recordFields['封面'] = { link: images[0] }
-    if (images[1]) recordFields['图片 2'] = { link: images[1] }
-    if (images[2]) recordFields['图片 3'] = { link: images[2] }
+    // 添加图片附件字段
+    if (fileTokens[0]) recordFields['封面'] = [{ file_token: fileTokens[0] }]
+    if (fileTokens[1]) recordFields['图片 2'] = [{ file_token: fileTokens[1] }]
+    if (fileTokens[2]) recordFields['图片 3'] = [{ file_token: fileTokens[2] }]
 
     // 追加到多维表格
-    await appendRecordToBitable(accessToken, FEISHU_APP_TOKEN, FEISHU_TABLE_ID, recordFields)
+    await appendRecordToBitable(accessToken, appToken, tableId, recordFields)
 
     const endTime = Date.now()
     const duration = endTime - startTime
@@ -190,7 +244,7 @@ export async function POST(request: NextRequest) {
       data: {
         message: '已成功保存到飞书多维表格',
         duration: duration,
-        appToken: FEISHU_APP_TOKEN,
+        appToken: appToken,
       },
     })
   } catch (error) {
