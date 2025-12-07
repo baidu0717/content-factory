@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Sparkles,
@@ -39,7 +39,7 @@ interface GenerateResult {
   conversationLength?: number
 }
 
-export default function ImageGeneratePage() {
+function ImageGeneratePageContent() {
   // 获取URL参数
   const searchParams = useSearchParams()
 
@@ -632,5 +632,20 @@ export default function ImageGeneratePage() {
         onViewImage={handleViewHistoryImage}
       />
     </div>
+  )
+}
+
+export default function ImageGeneratePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span>加载中...</span>
+        </div>
+      </div>
+    }>
+      <ImageGeneratePageContent />
+    </Suspense>
   )
 }

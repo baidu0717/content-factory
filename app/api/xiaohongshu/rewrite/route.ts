@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
-// 初始化 OpenAI 客户端
-const openai = new OpenAI({
-  baseURL: process.env.OPENAI_API_BASE || 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
-const MODEL = process.env.OPENAI_MODEL || 'openai/gpt-4o'
-
 export async function POST(request: NextRequest) {
   try {
     const { title, content, titlePrompt, contentPrompt } = await request.json()
+
+    // 初始化 OpenAI 客户端（在函数内部初始化，避免构建时错误）
+    const openai = new OpenAI({
+      baseURL: process.env.OPENAI_API_BASE || 'https://openrouter.ai/api/v1',
+      apiKey: process.env.OPENAI_API_KEY || '',
+    })
+
+    const MODEL = process.env.OPENAI_MODEL || 'openai/gpt-4o'
 
     // 参数验证
     if (!title && !content) {
