@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       content = parts.slice(1).join('|||').trim()
     } else {
       // 否则,取第一行或前50个字符作为标题
-      const lines = textWithoutTags.split('\n').filter(line => line.trim())
+      const lines = textWithoutTags.split('\n').filter((line: string) => line.trim())
       if (lines.length > 0) {
         title = lines[0].trim()
         content = lines.slice(1).join('\n').trim()

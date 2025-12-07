@@ -356,6 +356,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 8. 构建更新后的对话历史（添加模型回复）
+    if (!response.candidates || response.candidates.length === 0) {
+      throw new Error('模型未返回有效响应')
+    }
     const modelResponse = response.candidates[0].content
     const updatedHistory = [...conversationHistory, userMessage, modelResponse]
     console.log(`[Gemini API] 更新后对话历史长度: ${updatedHistory.length}`)

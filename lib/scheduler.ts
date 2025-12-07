@@ -43,6 +43,14 @@ interface AnalysisResult {
     engagement: string
     url?: string
   }>
+  topCommentsArticles: Array<{
+    title: string
+    comments: number
+    likes: number
+    reads?: number
+    collected?: number
+    url?: string
+  }>
   aiInsights?: AIInsightsResult
 }
 

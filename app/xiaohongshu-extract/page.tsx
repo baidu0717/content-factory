@@ -25,19 +25,21 @@ import GlassCard from '@/components/GlassCard'
 // 小红书笔记数据类型
 interface XiaohongshuNote {
   title: string
-  desc: string
+  desc?: string
+  content?: string
   images: string[]
-  user: {
+  user?: {
     nickname: string
     avatar: string
   }
-  interactInfo: {
+  interactInfo?: {
     likedCount: string
     collectedCount: string
     commentCount: string
   }
-  tagList: Array<{ name: string }>
-  time: number
+  tagList?: Array<{ name: string }>
+  tags?: string
+  time?: number
   url: string
 }
 

@@ -247,19 +247,19 @@ async function generateImageToImageWithImagen(
     const apiImageSize = resolution === '2k' ? '2K' : '4K'
     console.log('[图生图 Imagen] API 分辨率参数:', apiImageSize)
 
-    const response = await imageAI.models.editImages({
+    const response = await imageAI.models.editImage({
       model: IMAGEN_MODEL,
       prompt: prompt,
       referenceImage: {
         imageBytes: base64Data
       },
       config: {
-        editMode: 'MASK_FREE',  // 无遮罩编辑
+        editMode: 'MASK_FREE' as any,  // 无遮罩编辑
         numberOfImages: 1,
         aspectRatio: aspectRatio,
         imageSize: apiImageSize
       }
-    })
+    }) as any
 
     console.log('[图生图 Imagen] Imagen 4.0 API 调用成功')
 

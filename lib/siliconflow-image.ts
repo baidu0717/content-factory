@@ -246,7 +246,7 @@ async function generateSingleImage(prompt: string, retryCount = 0): Promise<stri
       throw new Error(`Gemini API 调用失败: ${response.status}`)
     }
 
-    const data = await response.json()
+    const data = await response.json() as any
     console.log(`[Gemini] 响应数据:`, JSON.stringify(data, null, 2))
 
     // 从响应中提取 Base64 图片数据
