@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getValidAccessToken } from '@/lib/feishu-auth'
 
 /**
  * POST /api/xiaohongshu/quick-save
@@ -34,15 +33,6 @@ export async function POST(request: NextRequest) {
         success: false,
         message: '❌ 未配置飞书表格信息，请在快捷指令中添加appToken和tableId参数'
       }, { status: 400 })
-    }
-
-    // 检查用户登录状态
-    const accessToken = await getValidAccessToken()
-    if (!accessToken) {
-      return NextResponse.json({
-        success: false,
-        message: '❌ 用户未登录，请先在网页端登录飞书账号'
-      }, { status: 401 })
     }
 
     console.log('[快捷保存] 开始解析小红书链接...')
