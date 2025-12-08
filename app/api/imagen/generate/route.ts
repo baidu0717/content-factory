@@ -15,6 +15,12 @@ const GEMINI_IMAGE_API_KEY = process.env.GEMINI_IMAGE_API_KEY || ''
 const GEMINI_PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview' // 云旅游模式：带联网功能的多模态模型
 const IMAGEN_MODEL = 'imagen-4.0-generate-001' // 创意模式：Imagen 4 专业生图
 
+// 调试：输出环境变量状态
+console.log('[Imagen Generate API Debug] GEMINI_TEXT_API_KEY exists:', !!GEMINI_TEXT_API_KEY)
+console.log('[Imagen Generate API Debug] GEMINI_TEXT_API_KEY length:', GEMINI_TEXT_API_KEY.length)
+console.log('[Imagen Generate API Debug] GEMINI_IMAGE_API_KEY exists:', !!GEMINI_IMAGE_API_KEY)
+console.log('[Imagen Generate API Debug] GEMINI_IMAGE_API_KEY length:', GEMINI_IMAGE_API_KEY.length)
+
 // 初始化客户端
 const genAI = new GoogleGenAI({
   apiKey: GEMINI_TEXT_API_KEY

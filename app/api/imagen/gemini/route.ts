@@ -15,6 +15,11 @@ setGlobalDispatcher(proxyAgent)
 const GEMINI_TEXT_API_KEY = process.env.GEMINI_TEXT_API_KEY || ''
 const GEMINI_PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview'
 
+// 调试：输出环境变量状态
+console.log('[Gemini API Debug] GEMINI_TEXT_API_KEY exists:', !!GEMINI_TEXT_API_KEY)
+console.log('[Gemini API Debug] GEMINI_TEXT_API_KEY length:', GEMINI_TEXT_API_KEY.length)
+console.log('[Gemini API Debug] All GEMINI env vars:', Object.keys(process.env).filter(key => key.includes('GEMINI')))
+
 // 初始化客户端
 const genAI = new GoogleGenAI({
   apiKey: GEMINI_TEXT_API_KEY
