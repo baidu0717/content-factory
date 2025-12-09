@@ -1,34 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getUserAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
 // 哼哼猫 API 配置
 const MEOWLOAD_API_KEY = 'nzlniaj8tyxkw0e7-16x5ek0gd6qr'
 const MEOWLOAD_API_URL = 'https://api.meowload.net/openapi/extract/post'
 
 // 飞书 API 配置
-const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
-const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
-
-/**
- * 获取飞书 app_access_token
- */
-async function getAppAccessToken(): Promise<string> {
-  const response = await fetch(`${FEISHU_API_URL}/auth/v3/app_access_token/internal`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      app_id: FEISHU_APP_ID,
-      app_secret: FEISHU_APP_SECRET,
-    }),
-  })
-
-  const data = await response.json()
-  if (data.code !== 0) {
-    throw new Error(`获取app_access_token失败: ${data.msg}`)
-  }
-
-  return data.app_access_token
-}
 
 /**
  * 解析小红书链接
@@ -106,6 +84,58 @@ async function parseXiaohongshu(url: string) {
 }
 
 /**
+ * 下载图片
+ */
+async function downloadImage(imageUrl: string): Promise<Buffer> {
+  console.log('[图片下载] 下载:', imageUrl.substring(0, 80) + '...')
+
+  const response = await fetch(imageUrl)
+
+  if (!response.ok) {
+    throw new Error(`下载图片失败: HTTP ${response.status}`)
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  return Buffer.from(arrayBuffer)
+}
+
+/**
+ * 处理并上传图片到飞书
+ */
+async function processImages(imageUrls: string[]): Promise<string[]> {
+  console.log('[图片处理] 需要处理', imageUrls.length, '张图片')
+
+  // 只处理前3张图片（封面、图片2、图片3）
+  const imagesToProcess = imageUrls.slice(0, 3)
+  const fileTokens: string[] = []
+
+  for (let i = 0; i < imagesToProcess.length; i++) {
+    try {
+      const imageUrl = imagesToProcess[i]
+
+      // 下载图片
+      const imageBuffer = await downloadImage(imageUrl)
+
+      // 上传到飞书
+      const fileName = `xiaohongshu-${Date.now()}-${i + 1}.jpg`
+      const fileToken = await uploadFileToFeishu(imageBuffer, fileName, 'image')
+
+      fileTokens.push(fileToken)
+
+      console.log(`[图片处理] 第 ${i + 1}/${imagesToProcess.length} 张完成`)
+
+    } catch (error) {
+      console.error(`[图片处理] 第 ${i + 1} 张失败:`, error)
+      // 继续处理下一张图片
+    }
+  }
+
+  console.log('[图片处理] 完成，成功上传', fileTokens.length, '张')
+
+  return fileTokens
+}
+
+/**
  * 保存到飞书表格
  */
 async function saveToFeishu(
@@ -114,24 +144,45 @@ async function saveToFeishu(
   title: string,
   content: string,
   tags: string,
-  images: string[],
+  fileTokens: string[],
   url: string
 ) {
-  console.log('[快捷保存-飞书] 开始保存...')
+  console.log('[快捷保存-飞书] 开始保存到表格...')
 
-  const accessToken = await getAppAccessToken()
+  const userAccessToken = await getUserAccessToken()
 
-  // 构建记录字段（暂时不保存图片，避免字段类型不匹配）
+  // 构建记录字段
   const fields: any = {
     '标题': title,
-    '正文': content,
+    '文案': content,
     '话题标签': tags,
     '笔记链接': url,
     '来源': '小红书'
   }
 
-  // 图片信息记录在日志中
-  console.log('[快捷保存-飞书] 图片数量:', images.length)
+  // 添加图片附件（飞书附件格式）
+  if (fileTokens.length > 0) {
+    // 封面
+    fields['封面'] = [{
+      file_token: fileTokens[0]
+    }]
+  }
+
+  if (fileTokens.length > 1) {
+    // 图片2
+    fields['图片2'] = [{
+      file_token: fileTokens[1]
+    }]
+  }
+
+  if (fileTokens.length > 2) {
+    // 图片3
+    fields['图片3'] = [{
+      file_token: fileTokens[2]
+    }]
+  }
+
+  console.log('[快捷保存-飞书] 附件数量:', fileTokens.length)
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
@@ -139,7 +190,7 @@ async function saveToFeishu(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${userAccessToken}`
       },
       body: JSON.stringify({ fields })
     }
@@ -158,7 +209,7 @@ async function saveToFeishu(
 
 /**
  * POST /api/xiaohongshu/quick-save
- * iOS快捷指令专用API - 一键保存小红书笔记到飞书
+ * iOS快捷指令专用API - 一键保存小红书笔记到飞书（含图片）
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -191,20 +242,24 @@ export async function POST(request: NextRequest) {
     // 1. 解析小红书链接
     const { title, content, tags, images } = await parseXiaohongshu(url)
 
-    // 2. 保存到飞书表格
-    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, images, url)
+    // 2. 下载并上传图片到飞书（前3张）
+    const fileTokens = await processImages(images)
+
+    // 3. 保存到飞书表格
+    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, fileTokens, url)
 
     const duration = Date.now() - startTime
 
     console.log('[快捷保存] 保存成功! 耗时:', duration + 'ms')
 
-    // 3. 返回成功消息
+    // 4. 返回成功消息
     return NextResponse.json({
       success: true,
-      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${images.length}张图片\n⏱️ 耗时${duration}ms`,
+      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${fileTokens.length}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
       data: {
         title,
-        imageCount: images.length,
+        imageCount: fileTokens.length,
+        totalImages: images.length,
         duration
       }
     })
