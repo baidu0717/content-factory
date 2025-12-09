@@ -73,12 +73,9 @@ export async function uploadFileToFeishu(
 
   // 构建 multipart/form-data
   const formData = new FormData()
-  // 将 Buffer 转为 ArrayBuffer 再创建 Blob
-  const arrayBuffer = fileBuffer.buffer.slice(
-    fileBuffer.byteOffset,
-    fileBuffer.byteOffset + fileBuffer.byteLength
-  )
-  const blob = new Blob([arrayBuffer], { type: 'image/jpeg' })
+  // 将 Buffer 转为 Uint8Array 再创建 Blob
+  const uint8Array = new Uint8Array(fileBuffer)
+  const blob = new Blob([uint8Array], { type: 'image/jpeg' })
   formData.append('file', blob, fileName)
   formData.append('file_name', fileName)
   formData.append('file_type', fileType)
