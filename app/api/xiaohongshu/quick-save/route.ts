@@ -121,10 +121,7 @@ async function saveToFeishu(
 
   const accessToken = await getAppAccessToken()
 
-  // 准备图片URL（保存为文本，用换行分隔）
-  const imageUrlsText = images.join('\n')
-
-  // 构建记录字段
+  // 构建记录字段（暂时不保存图片，避免字段类型不匹配）
   const fields: any = {
     '标题': title,
     '正文': content,
@@ -133,9 +130,8 @@ async function saveToFeishu(
     '来源': '小红书'
   }
 
-  if (imageUrlsText) {
-    fields['图片链接'] = imageUrlsText
-  }
+  // 图片信息记录在日志中
+  console.log('[快捷保存-飞书] 图片数量:', images.length)
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
