@@ -121,11 +121,8 @@ async function saveToFeishu(
 
   const accessToken = await getAppAccessToken()
 
-  // 准备图片附件
-  const imageAttachments = images.map(imageUrl => ({
-    file_token: imageUrl,
-    name: imageUrl.split('/').pop() || 'image.jpg'
-  }))
+  // 准备图片URL（保存为文本，用换行分隔）
+  const imageUrlsText = images.join('\n')
 
   // 构建记录字段
   const fields: any = {
@@ -136,8 +133,8 @@ async function saveToFeishu(
     '来源': '小红书'
   }
 
-  if (imageAttachments.length > 0) {
-    fields['图片'] = imageAttachments
+  if (imageUrlsText) {
+    fields['图片链接'] = imageUrlsText
   }
 
   const response = await fetch(
