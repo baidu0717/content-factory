@@ -25,12 +25,15 @@ export async function GET(request: NextRequest) {
     }
 
     // 使用 code 换取 access_token 和 refresh_token
+    // 必须包含 app_id 和 app_secret 进行身份验证
     const tokenResponse = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         grant_type: 'authorization_code',
-        code: code
+        code: code,
+        client_id: FEISHU_APP_ID,
+        client_secret: FEISHU_APP_SECRET
       })
     })
 
