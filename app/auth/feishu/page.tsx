@@ -32,8 +32,8 @@ export default function FeishuAuthPage() {
     }
 
     // 构建飞书 OAuth 授权 URL
-    // 注意: redirect_uri 会被 URLSearchParams 自动编码
-    const authUrl = new URL('https://open.feishu.cn/open-apis/authen/v1/authorize')
+    // 使用 /authen/v1/index 端点，参数为 app_id（不是 client_id）
+    const authUrl = new URL('https://open.feishu.cn/open-apis/authen/v1/index')
     authUrl.searchParams.set('app_id', appId)
     authUrl.searchParams.set('redirect_uri', redirectUri)
     authUrl.searchParams.set('state', 'STATE')
