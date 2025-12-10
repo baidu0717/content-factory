@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getUserAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
+import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
 // 哼哼猫 API 配置
 const MEOWLOAD_API_KEY = 'nzlniaj8tyxkw0e7-16x5ek0gd6qr'
@@ -149,7 +149,7 @@ async function saveToFeishu(
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
 
-  const userAccessToken = await getUserAccessToken()
+  const appAccessToken = await getAppAccessToken()
 
   // 构建记录字段（匹配个人表格的字段名）
   const fields: any = {
@@ -192,7 +192,7 @@ async function saveToFeishu(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userAccessToken}`
+        'Authorization': `Bearer ${appAccessToken}`
       },
       body: JSON.stringify({ fields })
     }
