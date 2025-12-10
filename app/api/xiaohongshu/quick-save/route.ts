@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getUserAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
+import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
 // 哼哼猫 API 配置
 const MEOWLOAD_API_KEY = 'nzlniaj8tyxkw0e7-16x5ek0gd6qr'
@@ -149,7 +149,7 @@ async function saveToFeishu(
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
 
-  const userAccessToken = await getUserAccessToken()
+  const appAccessToken = await getAppAccessToken()
 
   // 构建记录字段
   const fields: any = {
@@ -190,7 +190,7 @@ async function saveToFeishu(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userAccessToken}`
+        'Authorization': `Bearer ${appAccessToken}`
       },
       body: JSON.stringify({ fields })
     }
@@ -228,9 +228,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 获取表格配置
-    const finalAppToken = appToken || process.env.FEISHU_DEFAULT_APP_TOKEN
-    const finalTableId = tableId || process.env.FEISHU_DEFAULT_TABLE_ID
+    // 获取表格配置（使用应用创建的表格）
+    const finalAppToken = appToken || process.env.FEISHU_APP_TOKEN
+    const finalTableId = tableId || process.env.FEISHU_TABLE_ID
 
     if (!finalAppToken || !finalTableId) {
       return NextResponse.json({
