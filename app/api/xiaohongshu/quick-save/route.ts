@@ -228,9 +228,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 获取表格配置（使用个人表格）
-    const finalAppToken = appToken || process.env.FEISHU_DEFAULT_APP_TOKEN
-    const finalTableId = tableId || process.env.FEISHU_DEFAULT_TABLE_ID
+    // 获取表格配置（先测试应用创建的表格）
+    const finalAppToken = appToken || process.env.FEISHU_APP_TOKEN
+    const finalTableId = tableId || process.env.FEISHU_TABLE_ID
 
     if (!finalAppToken || !finalTableId) {
       return NextResponse.json({
