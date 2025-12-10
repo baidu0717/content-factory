@@ -151,13 +151,12 @@ async function saveToFeishu(
 
   const appAccessToken = await getAppAccessToken()
 
-  // 构建记录字段
+  // 构建记录字段（匹配应用表格的字段名）
   const fields: any = {
     '标题': title,
-    '文案': content,
+    '正文': content,
     '话题标签': tags,
-    '笔记链接': url,
-    '来源': '小红书'
+    '笔记链接': url
   }
 
   // 添加图片附件（飞书附件格式）
@@ -169,15 +168,15 @@ async function saveToFeishu(
   }
 
   if (fileTokens.length > 1) {
-    // 图片2
-    fields['图片2'] = [{
+    // 图片 2（注意有空格）
+    fields['图片 2'] = [{
       file_token: fileTokens[1]
     }]
   }
 
   if (fileTokens.length > 2) {
-    // 图片3
-    fields['图片3'] = [{
+    // 图片 3（注意有空格）
+    fields['图片 3'] = [{
       file_token: fileTokens[2]
     }]
   }
