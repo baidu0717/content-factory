@@ -2,11 +2,14 @@
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
+const FEISHU_REFRESH_TOKEN = process.env.FEISHU_REFRESH_TOKEN || ''
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
 
 // 内存缓存（生产环境应该用 Redis 或数据库）
 let cachedAppAccessToken: string | null = null
-let tokenExpireTime: number = 0
+let cachedUserAccessToken: string | null = null
+let appTokenExpireTime: number = 0
+let userTokenExpireTime: number = 0
 
 /**
  * 获取 app_access_token（应用级别的访问令牌）
@@ -14,7 +17,7 @@ let tokenExpireTime: number = 0
 export async function getAppAccessToken(): Promise<string> {
   // 检查缓存（提前5分钟刷新）
   const now = Date.now()
-  if (cachedAppAccessToken && tokenExpireTime > now + 5 * 60 * 1000) {
+  if (cachedAppAccessToken && appTokenExpireTime > now + 5 * 60 * 1000) {
     console.log('[飞书Auth] 使用缓存的 app_access_token')
     return cachedAppAccessToken
   }
@@ -42,7 +45,7 @@ export async function getAppAccessToken(): Promise<string> {
 
     // 缓存 token
     cachedAppAccessToken = app_access_token
-    tokenExpireTime = now + expire * 1000
+    appTokenExpireTime = now + expire * 1000
 
     console.log('[飞书Auth] app_access_token 获取成功，有效期:', expire, '秒')
 
@@ -50,6 +53,64 @@ export async function getAppAccessToken(): Promise<string> {
 
   } catch (error) {
     console.error('[飞书Auth] 获取app_access_token失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取 user_access_token（用户级别的访问令牌）
+ * 用于访问个人多维表格
+ */
+export async function getUserAccessToken(): Promise<string> {
+  // 检查缓存（提前5分钟刷新）
+  const now = Date.now()
+  if (cachedUserAccessToken && userTokenExpireTime > now + 5 * 60 * 1000) {
+    console.log('[飞书Auth] 使用缓存的 user_access_token')
+    return cachedUserAccessToken
+  }
+
+  console.log('[飞书Auth] 刷新 user_access_token...')
+
+  if (!FEISHU_REFRESH_TOKEN) {
+    throw new Error('未配置 FEISHU_REFRESH_TOKEN')
+  }
+
+  try {
+    // 第一步：获取 app_access_token
+    const appAccessToken = await getAppAccessToken()
+
+    // 第二步：使用 refresh_token 刷新 user_access_token
+    const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/refresh_access_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${appAccessToken}`
+      },
+      body: JSON.stringify({
+        grant_type: 'refresh_token',
+        refresh_token: FEISHU_REFRESH_TOKEN
+      })
+    })
+
+    const data = await response.json()
+
+    if (data.code !== 0) {
+      console.error('[飞书Auth] 刷新user_access_token失败:', data)
+      throw new Error(`刷新token失败: ${data.msg}`)
+    }
+
+    const { access_token, expires_in } = data.data
+
+    // 缓存 token
+    cachedUserAccessToken = access_token
+    userTokenExpireTime = now + expires_in * 1000
+
+    console.log('[飞书Auth] user_access_token 刷新成功，有效期:', expires_in, '秒')
+
+    return access_token
+
+  } catch (error) {
+    console.error('[飞书Auth] 刷新user_access_token失败:', error)
     throw error
   }
 }
