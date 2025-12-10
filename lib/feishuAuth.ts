@@ -96,7 +96,7 @@ export async function getUserAccessToken(): Promise<string> {
 
     if (data.code !== 0) {
       console.error('[飞书Auth] 刷新user_access_token失败:', data)
-      throw new Error(`刷新token失败: ${data.msg}`)
+      throw new Error(`刷新token失败: ${data.msg || data.message || JSON.stringify(data)}`)
     }
 
     const { access_token, expires_in } = data.data
