@@ -27,9 +27,32 @@ export async function getUserAccessToken(): Promise<string> {
   }
 
   try {
-    const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/refresh_access_token`, {
+    // 第一步：获取 app_access_token
+    const appTokenResponse = await fetch(`${FEISHU_API_URL}/auth/v3/app_access_token/internal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app_id: FEISHU_APP_ID,
+        app_secret: FEISHU_APP_SECRET
+      })
+    })
+
+    const appTokenData = await appTokenResponse.json()
+
+    if (appTokenData.code !== 0) {
+      console.error('[飞书Auth] 获取app_access_token失败:', appTokenData)
+      throw new Error(`获取app_access_token失败: ${appTokenData.msg}`)
+    }
+
+    const appAccessToken = appTokenData.app_access_token
+
+    // 第二步：使用 app_access_token 刷新 user_access_token
+    const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/refresh_access_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${appAccessToken}`
+      },
       body: JSON.stringify({
         grant_type: 'refresh_token',
         refresh_token: FEISHU_REFRESH_TOKEN
