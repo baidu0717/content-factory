@@ -154,12 +154,11 @@ async function saveToFeishu(
   // 构建记录字段（匹配个人表格的字段名）
   const fields: any = {
     '标题': title,
-    '文案': content,
+    '正文': content,
     '话题标签': tags,
     '笔记链接': {
       link: url
-    },
-    '来源': '小红书'
+    }
   }
 
   // 添加图片附件（飞书附件格式）
@@ -171,15 +170,15 @@ async function saveToFeishu(
   }
 
   if (fileTokens.length > 1) {
-    // 图片2（无空格）
-    fields['图片2'] = [{
+    // 图片 2（有空格）
+    fields['图片 2'] = [{
       file_token: fileTokens[1]
     }]
   }
 
   if (fileTokens.length > 2) {
-    // 图片3（无空格）
-    fields['图片3'] = [{
+    // 图片 3（有空格）
+    fields['图片 3'] = [{
       file_token: fileTokens[2]
     }]
   }
