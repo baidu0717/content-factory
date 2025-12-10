@@ -199,12 +199,14 @@ async function saveToFeishu(
 
   const data = await response.json()
 
+  console.log('[快捷保存-飞书] 飞书 API 响应:', JSON.stringify(data, null, 2))
+
   if (data.code !== 0) {
     console.error('[快捷保存-飞书] 保存失败:', data)
     throw new Error(`保存失败: ${data.msg || '未知错误'}`)
   }
 
-  console.log('[快捷保存-飞书] 保存成功')
+  console.log('[快捷保存-飞书] 保存成功，记录 ID:', data.data?.record_id)
   return data
 }
 
@@ -220,6 +222,8 @@ export async function POST(request: NextRequest) {
     const { url, appToken, tableId } = body
 
     console.log('[快捷保存] 收到请求:', { url, appToken, tableId })
+    console.log('[快捷保存] 环境变量 DEFAULT_APP_TOKEN:', process.env.FEISHU_DEFAULT_APP_TOKEN)
+    console.log('[快捷保存] 环境变量 DEFAULT_TABLE_ID:', process.env.FEISHU_DEFAULT_TABLE_ID)
 
     // 验证URL
     if (!url || typeof url !== 'string') {
