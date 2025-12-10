@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
+import { getUserAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
 // 哼哼猫 API 配置
 const MEOWLOAD_API_KEY = 'nzlniaj8tyxkw0e7-16x5ek0gd6qr'
@@ -149,16 +149,17 @@ async function saveToFeishu(
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
 
-  const appAccessToken = await getAppAccessToken()
+  const userAccessToken = await getUserAccessToken()
 
-  // 构建记录字段（匹配应用表格的字段名）
+  // 构建记录字段（匹配个人表格的字段名）
   const fields: any = {
     '标题': title,
-    '正文': content,
+    '文案': content,
     '话题标签': tags,
     '笔记链接': {
       link: url
-    }
+    },
+    '来源': '小红书'
   }
 
   // 添加图片附件（飞书附件格式）
@@ -170,15 +171,15 @@ async function saveToFeishu(
   }
 
   if (fileTokens.length > 1) {
-    // 图片 2（注意有空格）
-    fields['图片 2'] = [{
+    // 图片2（无空格）
+    fields['图片2'] = [{
       file_token: fileTokens[1]
     }]
   }
 
   if (fileTokens.length > 2) {
-    // 图片 3（注意有空格）
-    fields['图片 3'] = [{
+    // 图片3（无空格）
+    fields['图片3'] = [{
       file_token: fileTokens[2]
     }]
   }
@@ -191,7 +192,7 @@ async function saveToFeishu(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${appAccessToken}`
+        'Authorization': `Bearer ${userAccessToken}`
       },
       body: JSON.stringify({ fields })
     }
@@ -229,9 +230,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 获取表格配置（先测试应用创建的表格）
-    const finalAppToken = appToken || process.env.FEISHU_APP_TOKEN
-    const finalTableId = tableId || process.env.FEISHU_TABLE_ID
+    // 获取表格配置（使用个人表格）
+    const finalAppToken = appToken || process.env.FEISHU_DEFAULT_APP_TOKEN
+    const finalTableId = tableId || process.env.FEISHU_DEFAULT_TABLE_ID
 
     if (!finalAppToken || !finalTableId) {
       return NextResponse.json({
