@@ -24,23 +24,45 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // 使用 code 换取 access_token 和 refresh_token
-    // 必须包含 app_id 和 app_secret 进行身份验证
-    const tokenResponse = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/access_token`, {
+    // 第一步：获取 app_access_token
+    const appTokenResponse = await fetch(`${FEISHU_API_URL}/auth/v3/app_access_token/internal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        app_id: FEISHU_APP_ID,
+        app_secret: FEISHU_APP_SECRET
+      })
+    })
+
+    const appTokenData = await appTokenResponse.json()
+
+    if (appTokenData.code !== 0) {
+      console.error('[飞书授权] 获取app_access_token失败:', appTokenData)
+      return NextResponse.json(
+        { success: false, error: `获取app_access_token失败: ${appTokenData.msg}` },
+        { status: 500 }
+      )
+    }
+
+    const appAccessToken = appTokenData.app_access_token
+
+    // 第二步：使用 app_access_token 和 code 换取 user_access_token 和 refresh_token
+    const tokenResponse = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/access_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${appAccessToken}`
+      },
+      body: JSON.stringify({
         grant_type: 'authorization_code',
-        code: code,
-        client_id: FEISHU_APP_ID,
-        client_secret: FEISHU_APP_SECRET
+        code: code
       })
     })
 
     const tokenData = await tokenResponse.json()
 
     if (tokenData.code !== 0) {
-      console.error('[飞书授权] 获取token失败:', tokenData)
+      console.error('[飞书授权] 获取user_access_token失败:', tokenData)
       return NextResponse.json(
         { success: false, error: `获取token失败: ${tokenData.msg}` },
         { status: 500 }
