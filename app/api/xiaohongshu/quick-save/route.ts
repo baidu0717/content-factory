@@ -121,32 +121,13 @@ async function saveToFeishu(
     '笔记链接': url  // 文本字段，直接传字符串
   }
 
-  // 尝试方案：传递包含URL的对象数组到附件字段
+  // 暂时不传递附件字段 - 飞书API只接受file_token，不接受URL
+  // 图片URL保存到文本字段中作为备用
   if (imageUrls.length > 0) {
-    fields['封面'] = [{
-      url: imageUrls[0],
-      tmp_url: imageUrls[0]
-    }]
-    console.log('[快捷保存-飞书] 封面 URL:', imageUrls[0])
+    const imageUrlsText = imageUrls.join('\n')
+    fields['备注'] = `图片链接:\n${imageUrlsText}`
+    console.log('[快捷保存-飞书] 图片URL保存到备注字段，数量:', imageUrls.length)
   }
-
-  if (imageUrls.length > 1) {
-    fields['图片 2'] = [{
-      url: imageUrls[1],
-      tmp_url: imageUrls[1]
-    }]
-    console.log('[快捷保存-飞书] 图片2 URL:', imageUrls[1])
-  }
-
-  if (imageUrls.length > 2) {
-    fields['图片 3'] = [{
-      url: imageUrls[2],
-      tmp_url: imageUrls[2]
-    }]
-    console.log('[快捷保存-飞书] 图片3 URL:', imageUrls[2])
-  }
-
-  console.log('[快捷保存-飞书] 图片 URL 数量:', imageUrls.length)
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
