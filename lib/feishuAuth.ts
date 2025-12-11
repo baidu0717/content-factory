@@ -101,14 +101,21 @@ export async function getUserAccessToken(): Promise<string> {
     let refreshToken: string | null = null
     try {
       refreshToken = await kv.get<string>(KV_KEY_REFRESH_TOKEN)
-      console.log('[飞书Auth] 从 KV 读取 refresh_token')
-    } catch {
+      if (refreshToken) {
+        console.log('[飞书Auth] 从 KV 读取 refresh_token')
+      } else {
+        // KV 里没有值，降级到环境变量
+        refreshToken = FEISHU_REFRESH_TOKEN
+        console.log('[飞书Auth] KV 为空，从环境变量读取 refresh_token')
+      }
+    } catch (error) {
+      // KV 不可用，降级到环境变量
       refreshToken = FEISHU_REFRESH_TOKEN
-      console.log('[飞书Auth] 从环境变量读取 refresh_token')
+      console.log('[飞书Auth] KV 读取失败，从环境变量读取 refresh_token')
     }
 
     if (!refreshToken) {
-      throw new Error('未配置 FEISHU_REFRESH_TOKEN')
+      throw new Error('未配置 FEISHU_REFRESH_TOKEN（请检查环境变量或 KV 存储）')
     }
 
     // 第一步：获取 app_access_token
