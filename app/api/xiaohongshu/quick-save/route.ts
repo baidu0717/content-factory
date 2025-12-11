@@ -145,7 +145,7 @@ async function saveToFeishu(
   title: string,
   content: string,
   tags: string,
-  fileTokens: string[],
+  imageUrls: string[],
   url: string
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
@@ -160,29 +160,24 @@ async function saveToFeishu(
     '笔记链接': url  // 文本字段，直接传字符串
   }
 
-  // 添加图片附件（使用 file_token）
-  if (fileTokens.length > 0) {
-    // 封面
-    fields['封面'] = [{
-      file_token: fileTokens[0]
-    }]
+  // 添加图片附件（直接使用 URL）
+  if (imageUrls.length > 0) {
+    // 封面 - 直接使用图片 URL
+    fields['封面'] = imageUrls[0]
+    console.log('[快捷保存-飞书] 封面URL:', imageUrls[0].substring(0, 80) + '...')
   }
 
-  if (fileTokens.length > 1) {
+  if (imageUrls.length > 1) {
     // 图片 2（有空格）
-    fields['图片 2'] = [{
-      file_token: fileTokens[1]
-    }]
+    fields['图片 2'] = imageUrls[1]
   }
 
-  if (fileTokens.length > 2) {
+  if (imageUrls.length > 2) {
     // 图片 3（有空格）
-    fields['图片 3'] = [{
-      file_token: fileTokens[2]
-    }]
+    fields['图片 3'] = imageUrls[2]
   }
 
-  console.log('[快捷保存-飞书] 附件数量:', fileTokens.length)
+  console.log('[快捷保存-飞书] 图片数量:', imageUrls.length)
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
@@ -246,11 +241,12 @@ export async function POST(request: NextRequest) {
     // 1. 解析小红书链接
     const { title, content, tags, images } = await parseXiaohongshu(url)
 
-    // 2. 下载并上传图片到飞书（前3张）
-    const fileTokens = await processImages(images, finalAppToken)
+    // 2. 直接使用图片 URL（前3张）
+    const imageUrls = images.slice(0, 3)
+    console.log('[快捷保存] 使用图片 URL，共', imageUrls.length, '张')
 
     // 3. 保存到飞书表格
-    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, fileTokens, url)
+    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, imageUrls, url)
 
     const duration = Date.now() - startTime
 
@@ -259,10 +255,10 @@ export async function POST(request: NextRequest) {
     // 4. 返回成功消息
     return NextResponse.json({
       success: true,
-      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${fileTokens.length}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
+      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${imageUrls.length}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
       data: {
         title,
-        imageCount: fileTokens.length,
+        imageCount: imageUrls.length,
         totalImages: images.length,
         duration
       }
