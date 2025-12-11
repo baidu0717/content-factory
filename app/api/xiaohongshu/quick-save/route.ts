@@ -117,9 +117,9 @@ async function processImages(imageUrls: string[], appToken: string): Promise<str
       // 下载图片
       const imageBuffer = await downloadImage(imageUrl)
 
-      // 上传到飞书，指定 parent_node 为表格的 app_token
+      // 上传到飞书用户云空间，获取 file_token
       const fileName = `xiaohongshu-${Date.now()}-${i + 1}.jpg`
-      const fileToken = await uploadFileToFeishu(imageBuffer, fileName, 'image', 'bitable', appToken)
+      const fileToken = await uploadFileToFeishu(imageBuffer, fileName, 'image')
 
       fileTokens.push(fileToken)
 

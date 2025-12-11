@@ -142,10 +142,8 @@ export async function uploadFileToFeishu(
   formData.append('file', blob, fileName)
   formData.append('file_name', fileName)
   formData.append('file_type', fileType)
-  formData.append('parent_type', parentType)
-  if (parentNode) {
-    formData.append('parent_node', parentNode)
-  }
+  // 不指定 parent_type 和 parent_node，直接上传到用户云空间
+  // 然后通过 file_token 在附件字段中引用
   formData.append('duration', '0')
 
   const response = await fetch(`${FEISHU_API_URL}/drive/v1/files/upload_all`, {
