@@ -160,21 +160,27 @@ async function saveToFeishu(
     '笔记链接': url  // 文本字段，直接传字符串
   }
 
-  // 添加图片附件（直接使用 URL）
+  // 添加图片附件（使用对象数组格式）
   if (imageUrls.length > 0) {
-    // 封面 - 直接使用图片 URL
-    fields['封面'] = imageUrls[0]
+    // 封面 - 附件字段需要对象数组格式
+    fields['封面'] = [{
+      tmp_url: imageUrls[0]
+    }]
     console.log('[快捷保存-飞书] 封面URL:', imageUrls[0].substring(0, 80) + '...')
   }
 
   if (imageUrls.length > 1) {
     // 图片 2（有空格）
-    fields['图片 2'] = imageUrls[1]
+    fields['图片 2'] = [{
+      tmp_url: imageUrls[1]
+    }]
   }
 
   if (imageUrls.length > 2) {
     // 图片 3（有空格）
-    fields['图片 3'] = imageUrls[2]
+    fields['图片 3'] = [{
+      tmp_url: imageUrls[2]
+    }]
   }
 
   console.log('[快捷保存-飞书] 图片数量:', imageUrls.length)
