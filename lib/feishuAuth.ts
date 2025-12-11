@@ -117,7 +117,7 @@ export async function getUserAccessToken(): Promise<string> {
 
 /**
  * 上传文件到飞书云文档
- * 不指定 parent_node，让文件上传到云空间后通过 file_token 引用
+ * 使用 user_access_token 上传到个人表格
  */
 export async function uploadFileToFeishu(
   fileBuffer: Buffer,
@@ -126,11 +126,11 @@ export async function uploadFileToFeishu(
   parentType: string = 'bitable',
   parentNode?: string
 ): Promise<string> {
-  // 使用 app_access_token 上传文件
-  const appAccessToken = await getAppAccessToken()
+  // 使用 user_access_token 上传到个人表格
+  const userAccessToken = await getUserAccessToken()
 
   console.log('[飞书文件上传] 开始上传:', fileName)
-  console.log('[飞书文件上传] 使用 app_access_token')
+  console.log('[飞书文件上传] 使用 user_access_token')
   console.log('[飞书文件上传] parent_type:', parentType)
   console.log('[飞书文件上传] parent_node:', parentNode || '(未指定)')
 
@@ -142,17 +142,16 @@ export async function uploadFileToFeishu(
   formData.append('file', blob, fileName)
   formData.append('file_name', fileName)
   formData.append('file_type', fileType)
-  // 不指定 parent_type 和 parent_node，让文件上传后通过 file_token 引用
-  // formData.append('parent_type', parentType)
-  // if (parentNode) {
-  //   formData.append('parent_node', parentNode)
-  // }
+  formData.append('parent_type', parentType)
+  if (parentNode) {
+    formData.append('parent_node', parentNode)
+  }
   formData.append('duration', '0')
 
   const response = await fetch(`${FEISHU_API_URL}/drive/v1/files/upload_all`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${appAccessToken}`
+      'Authorization': `Bearer ${userAccessToken}`
     },
     body: formData
   })
