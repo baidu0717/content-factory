@@ -1,15 +1,21 @@
 // 飞书应用认证工具函数
+import { kv } from '@vercel/kv'
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
 const FEISHU_REFRESH_TOKEN = process.env.FEISHU_REFRESH_TOKEN || ''
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
 
-// 内存缓存（生产环境应该用 Redis 或数据库）
+// 内存缓存（用于本地开发，生产环境使用 KV）
 let cachedAppAccessToken: string | null = null
 let cachedUserAccessToken: string | null = null
 let appTokenExpireTime: number = 0
 let userTokenExpireTime: number = 0
+
+// KV 存储键名
+const KV_KEY_USER_ACCESS_TOKEN = 'feishu:user_access_token'
+const KV_KEY_USER_TOKEN_EXPIRE = 'feishu:user_token_expire'
+const KV_KEY_REFRESH_TOKEN = 'feishu:refresh_token'
 
 /**
  * 获取 app_access_token（应用级别的访问令牌）
@@ -60,22 +66,45 @@ export async function getAppAccessToken(): Promise<string> {
 /**
  * 获取 user_access_token（用户级别的访问令牌）
  * 用于访问个人多维表格
+ * 使用 Vercel KV 存储 refresh_token 以支持动态更新
  */
 export async function getUserAccessToken(): Promise<string> {
-  // 检查缓存（提前5分钟刷新）
   const now = Date.now()
-  if (cachedUserAccessToken && userTokenExpireTime > now + 5 * 60 * 1000) {
-    console.log('[飞书Auth] 使用缓存的 user_access_token')
-    return cachedUserAccessToken
+
+  try {
+    // 尝试从 KV 读取缓存的 token（生产环境）
+    const kvToken = await kv.get<string>(KV_KEY_USER_ACCESS_TOKEN)
+    const kvExpire = await kv.get<number>(KV_KEY_USER_TOKEN_EXPIRE)
+
+    if (kvToken && kvExpire && kvExpire > now + 5 * 60 * 1000) {
+      console.log('[飞书Auth] 使用 KV 缓存的 user_access_token')
+      return kvToken
+    }
+  } catch (error) {
+    // KV 不可用（本地开发），使用内存缓存
+    if (cachedUserAccessToken && userTokenExpireTime > now + 5 * 60 * 1000) {
+      console.log('[飞书Auth] 使用内存缓存的 user_access_token')
+      return cachedUserAccessToken
+    }
   }
 
   console.log('[飞书Auth] 刷新 user_access_token...')
 
-  if (!FEISHU_REFRESH_TOKEN) {
-    throw new Error('未配置 FEISHU_REFRESH_TOKEN')
-  }
-
   try {
+    // 获取 refresh_token（优先从 KV，降级到环境变量）
+    let refreshToken: string | null = null
+    try {
+      refreshToken = await kv.get<string>(KV_KEY_REFRESH_TOKEN)
+      console.log('[飞书Auth] 从 KV 读取 refresh_token')
+    } catch {
+      refreshToken = FEISHU_REFRESH_TOKEN
+      console.log('[飞书Auth] 从环境变量读取 refresh_token')
+    }
+
+    if (!refreshToken) {
+      throw new Error('未配置 FEISHU_REFRESH_TOKEN')
+    }
+
     // 第一步：获取 app_access_token
     const appAccessToken = await getAppAccessToken()
 
@@ -88,7 +117,7 @@ export async function getUserAccessToken(): Promise<string> {
       },
       body: JSON.stringify({
         grant_type: 'refresh_token',
-        refresh_token: FEISHU_REFRESH_TOKEN
+        refresh_token: refreshToken
       })
     })
 
@@ -99,11 +128,22 @@ export async function getUserAccessToken(): Promise<string> {
       throw new Error(`刷新token失败: ${data.msg || data.message || JSON.stringify(data)}`)
     }
 
-    const { access_token, expires_in } = data.data
+    const { access_token, expires_in, refresh_token: newRefreshToken } = data.data
 
-    // 缓存 token
-    cachedUserAccessToken = access_token
-    userTokenExpireTime = now + expires_in * 1000
+    // 保存新的 token 到 KV（如果可用）
+    try {
+      await Promise.all([
+        kv.set(KV_KEY_USER_ACCESS_TOKEN, access_token),
+        kv.set(KV_KEY_USER_TOKEN_EXPIRE, now + expires_in * 1000),
+        kv.set(KV_KEY_REFRESH_TOKEN, newRefreshToken)
+      ])
+      console.log('[飞书Auth] 新 token 已保存到 KV')
+    } catch {
+      // KV 不可用，降级到内存缓存
+      cachedUserAccessToken = access_token
+      userTokenExpireTime = now + expires_in * 1000
+      console.log('[飞书Auth] KV 不可用，使用内存缓存')
+    }
 
     console.log('[飞书Auth] user_access_token 刷新成功，有效期:', expires_in, '秒')
 
