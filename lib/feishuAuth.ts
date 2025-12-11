@@ -1,4 +1,5 @@
 // 飞书应用认证工具函数
+// 使用 KV 存储动态刷新的 refresh_token
 import { createClient } from '@vercel/kv'
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
