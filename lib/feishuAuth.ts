@@ -1,10 +1,16 @@
 // 飞书应用认证工具函数
-import { kv } from '@vercel/kv'
+import { createClient } from '@vercel/kv'
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
 const FEISHU_REFRESH_TOKEN = process.env.FEISHU_REFRESH_TOKEN || ''
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
+
+// 配置 KV 客户端使用 STORAGE_ 前缀（Upstash 连接时的自定义前缀）
+const kv = createClient({
+  url: process.env.STORAGE_REST_API_URL || process.env.KV_REST_API_URL || '',
+  token: process.env.STORAGE_REST_API_TOKEN || process.env.KV_REST_API_TOKEN || ''
+})
 
 // 内存缓存（用于本地开发，生产环境使用 KV）
 let cachedAppAccessToken: string | null = null
