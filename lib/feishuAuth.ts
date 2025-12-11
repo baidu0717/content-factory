@@ -117,6 +117,7 @@ export async function getUserAccessToken(): Promise<string> {
 
 /**
  * 上传文件到飞书云文档
+ * 使用 user_access_token 以便上传到个人表格
  */
 export async function uploadFileToFeishu(
   fileBuffer: Buffer,
@@ -125,9 +126,11 @@ export async function uploadFileToFeishu(
   parentType: string = 'bitable',
   parentNode?: string
 ): Promise<string> {
-  const appAccessToken = await getAppAccessToken()
+  // 使用 user_access_token 上传到个人表格
+  const userAccessToken = await getUserAccessToken()
 
   console.log('[飞书文件上传] 开始上传:', fileName)
+  console.log('[飞书文件上传] 使用 user_access_token')
   console.log('[飞书文件上传] parent_type:', parentType)
   console.log('[飞书文件上传] parent_node:', parentNode)
 
@@ -148,7 +151,7 @@ export async function uploadFileToFeishu(
   const response = await fetch(`${FEISHU_API_URL}/drive/v1/files/upload_all`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${appAccessToken}`
+      'Authorization': `Bearer ${userAccessToken}`
     },
     body: formData
   })
