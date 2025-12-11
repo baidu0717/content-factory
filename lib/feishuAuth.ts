@@ -193,12 +193,9 @@ export async function uploadFileToFeishu(
   // 将 Buffer 转为 Uint8Array 再创建 Blob
   const uint8Array = new Uint8Array(fileBuffer)
   const blob = new Blob([uint8Array], { type: 'image/jpeg' })
-  formData.append('file', blob, fileName)
   formData.append('file_name', fileName)
   formData.append('file_type', fileType)
-  // 不指定 parent_type 和 parent_node，直接上传到用户云空间
-  // 然后通过 file_token 在附件字段中引用
-  formData.append('duration', '0')
+  formData.append('file', blob, fileName)
 
   const response = await fetch(`${FEISHU_API_URL}/drive/v1/files/upload_all`, {
     method: 'POST',
