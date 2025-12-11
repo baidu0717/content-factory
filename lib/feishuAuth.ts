@@ -121,11 +121,15 @@ export async function getUserAccessToken(): Promise<string> {
 export async function uploadFileToFeishu(
   fileBuffer: Buffer,
   fileName: string,
-  fileType: string = 'image'
+  fileType: string = 'image',
+  parentType: string = 'bitable',
+  parentNode?: string
 ): Promise<string> {
   const appAccessToken = await getAppAccessToken()
 
   console.log('[飞书文件上传] 开始上传:', fileName)
+  console.log('[飞书文件上传] parent_type:', parentType)
+  console.log('[飞书文件上传] parent_node:', parentNode)
 
   // 构建 multipart/form-data
   const formData = new FormData()
@@ -135,6 +139,10 @@ export async function uploadFileToFeishu(
   formData.append('file', blob, fileName)
   formData.append('file_name', fileName)
   formData.append('file_type', fileType)
+  formData.append('parent_type', parentType)
+  if (parentNode) {
+    formData.append('parent_node', parentNode)
+  }
   formData.append('duration', '0')
 
   const response = await fetch(`${FEISHU_API_URL}/drive/v1/files/upload_all`, {

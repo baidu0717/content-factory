@@ -102,8 +102,9 @@ async function downloadImage(imageUrl: string): Promise<Buffer> {
 /**
  * 处理并上传图片到飞书
  */
-async function processImages(imageUrls: string[]): Promise<string[]> {
+async function processImages(imageUrls: string[], appToken: string): Promise<string[]> {
   console.log('[图片处理] 需要处理', imageUrls.length, '张图片')
+  console.log('[图片处理] 目标表格:', appToken)
 
   // 只处理前3张图片（封面、图片2、图片3）
   const imagesToProcess = imageUrls.slice(0, 3)
@@ -116,9 +117,9 @@ async function processImages(imageUrls: string[]): Promise<string[]> {
       // 下载图片
       const imageBuffer = await downloadImage(imageUrl)
 
-      // 上传到飞书
+      // 上传到飞书，指定 parent_node 为表格的 app_token
       const fileName = `xiaohongshu-${Date.now()}-${i + 1}.jpg`
-      const fileToken = await uploadFileToFeishu(imageBuffer, fileName, 'image')
+      const fileToken = await uploadFileToFeishu(imageBuffer, fileName, 'image', 'bitable', appToken)
 
       fileTokens.push(fileToken)
 
@@ -144,7 +145,7 @@ async function saveToFeishu(
   title: string,
   content: string,
   tags: string,
-  imageUrls: string[],
+  fileTokens: string[],
   url: string
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
@@ -159,32 +160,29 @@ async function saveToFeishu(
     '笔记链接': url  // 文本字段，直接传字符串
   }
 
-  // 添加图片附件（尝试使用 URL）
-  if (imageUrls.length > 0) {
-    // 封面 - 尝试 URL 格式
+  // 添加图片附件（使用 file_token）
+  if (fileTokens.length > 0) {
+    // 封面
     fields['封面'] = [{
-      url: imageUrls[0]
+      file_token: fileTokens[0]
     }]
-    console.log('[快捷保存-飞书] 封面 URL:', imageUrls[0])
   }
 
-  if (imageUrls.length > 1) {
+  if (fileTokens.length > 1) {
     // 图片 2（有空格）
     fields['图片 2'] = [{
-      url: imageUrls[1]
+      file_token: fileTokens[1]
     }]
-    console.log('[快捷保存-飞书] 图片 2 URL:', imageUrls[1])
   }
 
-  if (imageUrls.length > 2) {
+  if (fileTokens.length > 2) {
     // 图片 3（有空格）
     fields['图片 3'] = [{
-      url: imageUrls[2]
+      file_token: fileTokens[2]
     }]
-    console.log('[快捷保存-飞书] 图片 3 URL:', imageUrls[2])
   }
 
-  console.log('[快捷保存-飞书] 图片数量:', imageUrls.length)
+  console.log('[快捷保存-飞书] 附件数量:', fileTokens.length)
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
@@ -248,12 +246,11 @@ export async function POST(request: NextRequest) {
     // 1. 解析小红书链接
     const { title, content, tags, images } = await parseXiaohongshu(url)
 
-    // 2. 直接使用图片 URL（不下载上传）
-    const imageUrls = images.slice(0, 3)  // 只取前3张
-    console.log('[快捷保存] 图片 URLs:', imageUrls)
+    // 2. 下载并上传图片到飞书（前3张）
+    const fileTokens = await processImages(images, finalAppToken)
 
     // 3. 保存到飞书表格
-    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, imageUrls, url)
+    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, fileTokens, url)
 
     const duration = Date.now() - startTime
 
@@ -262,10 +259,10 @@ export async function POST(request: NextRequest) {
     // 4. 返回成功消息
     return NextResponse.json({
       success: true,
-      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${imageUrls.length}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
+      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${fileTokens.length}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
       data: {
         title,
-        imageCount: imageUrls.length,
+        imageCount: fileTokens.length,
         totalImages: images.length,
         duration
       }
