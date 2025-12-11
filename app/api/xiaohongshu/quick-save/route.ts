@@ -121,19 +121,28 @@ async function saveToFeishu(
     '笔记链接': url  // 文本字段，直接传字符串
   }
 
-  // 尝试方案：直接传递图片 URL 字符串到附件字段
+  // 尝试方案：传递包含URL的对象数组到附件字段
   if (imageUrls.length > 0) {
-    fields['封面'] = imageUrls[0]
+    fields['封面'] = [{
+      url: imageUrls[0],
+      tmp_url: imageUrls[0]
+    }]
     console.log('[快捷保存-飞书] 封面 URL:', imageUrls[0])
   }
 
   if (imageUrls.length > 1) {
-    fields['图片 2'] = imageUrls[1]
+    fields['图片 2'] = [{
+      url: imageUrls[1],
+      tmp_url: imageUrls[1]
+    }]
     console.log('[快捷保存-飞书] 图片2 URL:', imageUrls[1])
   }
 
   if (imageUrls.length > 2) {
-    fields['图片 3'] = imageUrls[2]
+    fields['图片 3'] = [{
+      url: imageUrls[2],
+      tmp_url: imageUrls[2]
+    }]
     console.log('[快捷保存-飞书] 图片3 URL:', imageUrls[2])
   }
 
