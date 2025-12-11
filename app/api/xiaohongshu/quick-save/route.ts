@@ -156,9 +156,7 @@ async function saveToFeishu(
     '标题': title,
     '正文': content,
     '话题标签': tags,
-    '笔记链接': {
-      link: url
-    }
+    '笔记链接': url  // 文本字段，直接传字符串
   }
 
   // 添加图片附件（飞书附件格式）
