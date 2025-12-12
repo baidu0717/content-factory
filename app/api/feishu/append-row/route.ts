@@ -192,26 +192,30 @@ export async function POST(request: NextRequest) {
 
     console.log('[飞书导出API] 使用用户token操作')
 
-    // 下载并上传图片到飞书
-    console.log('[飞书导出API] 开始处理图片...')
-    const fileTokens: string[] = []
+    // 下载并上传图片到飞书（并行处理）
+    console.log('[飞书导出API] 开始并行处理图片...')
+    const imagesToProcess = images.slice(0, 3).filter(Boolean)
 
-    for (let i = 0; i < Math.min(images.length, 3); i++) {
-      if (images[i]) {
-        try {
-          console.log(`[飞书导出API] 处理第 ${i + 1} 张图片...`)
-          const imageBuffer = await downloadImage(images[i])
-          const fileName = `image_${Date.now()}_${i}.jpg`
-          const fileToken = await uploadImageToFeishu(accessToken, imageBuffer, fileName, appToken)
-          fileTokens.push(fileToken)
-        } catch (error) {
-          console.error(`[飞书导出API] 处理第 ${i + 1} 张图片失败:`, error)
-          // 图片处理失败不影响整体流程，继续处理下一张
-        }
+    // 并行处理所有图片（下载+上传同时进行）
+    const imagePromises = imagesToProcess.map(async (imageUrl, i) => {
+      try {
+        console.log(`[飞书导出API] 开始处理第 ${i + 1} 张图片...`)
+        const imageBuffer = await downloadImage(imageUrl)
+        const fileName = `image_${Date.now()}_${i}.jpg`
+        const fileToken = await uploadImageToFeishu(accessToken, imageBuffer, fileName, appToken)
+        console.log(`[飞书导出API] 第 ${i + 1} 张图片处理完成`)
+        return fileToken
+      } catch (error) {
+        console.error(`[飞书导出API] 处理第 ${i + 1} 张图片失败:`, error)
+        return null
       }
-    }
+    })
 
-    console.log(`[飞书导出API] 成功上传 ${fileTokens.length} 张图片`)
+    // 等待所有图片处理完成
+    const results = await Promise.all(imagePromises)
+    const fileTokens = results.filter((token): token is string => token !== null)
+
+    console.log(`[飞书导出API] 成功上传 ${fileTokens.length}/${imagesToProcess.length} 张图片`)
 
     // 准备多维表格记录数据
     // 注意：字段名必须与多维表格中的字段名完全一致

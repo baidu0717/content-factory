@@ -106,28 +106,32 @@ async function processImages(imageUrls: string[], appToken: string): Promise<str
 
   // 只取前3张图片（封面、图片2、图片3）
   const imagesToProcess = imageUrls.slice(0, 3)
-  const fileTokens: string[] = []
 
-  for (let i = 0; i < imagesToProcess.length; i++) {
+  // 并行处理所有图片（下载+上传同时进行）
+  console.log('[图片处理] 开始并行处理...')
+  const imagePromises = imagesToProcess.map(async (imageUrl, i) => {
     try {
-      const imageUrl = imagesToProcess[i]
-      console.log(`[图片处理] 处理第 ${i + 1} 张图片...`)
+      console.log(`[图片处理] 开始处理第 ${i + 1} 张图片...`)
 
       // 1. 下载图片
       const imageBuffer = await downloadImage(imageUrl)
-      console.log(`[图片处理] 图片下载成功，大小: ${imageBuffer.length} bytes`)
+      console.log(`[图片处理] 图片 ${i + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
 
       // 2. 上传到飞书
       const fileName = `image_${Date.now()}_${i}.jpg`
       const fileToken = await uploadFileToFeishu(imageBuffer, fileName, appToken)
 
-      fileTokens.push(fileToken)
       console.log(`[图片处理] 第 ${i + 1} 张图片处理完成，file_token: ${fileToken}`)
+      return fileToken
     } catch (error) {
       console.error(`[图片处理] 第 ${i + 1} 张图片处理失败:`, error)
-      // 继续处理下一张图片
+      return null
     }
-  }
+  })
+
+  // 等待所有图片处理完成
+  const results = await Promise.all(imagePromises)
+  const fileTokens = results.filter((token): token is string => token !== null)
 
   console.log(`[图片处理] 共成功处理 ${fileTokens.length}/${imagesToProcess.length} 张图片`)
   return fileTokens
