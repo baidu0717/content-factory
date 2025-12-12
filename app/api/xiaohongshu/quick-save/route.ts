@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAppAccessToken } from '@/lib/feishuAuth'
+import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
 // 哼哼猫 API 配置
 const MEOWLOAD_API_KEY = 'nzlniaj8tyxkw0e7-16x5ek0gd6qr'
@@ -84,17 +84,53 @@ async function parseXiaohongshu(url: string) {
 }
 
 /**
- * 准备图片URLs（前3张）
+ * 下载图片
  */
-function prepareImageUrls(imageUrls: string[]): string[] {
+async function downloadImage(url: string): Promise<Buffer> {
+  console.log('[图片下载] 下载图片:', url)
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`图片下载失败: ${response.status}`)
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  return Buffer.from(arrayBuffer)
+}
+
+/**
+ * 处理图片：下载并上传到飞书，获取 file_token
+ */
+async function processImages(imageUrls: string[], appToken: string): Promise<string[]> {
   console.log('[图片处理] 需要处理', imageUrls.length, '张图片')
 
   // 只取前3张图片（封面、图片2、图片3）
-  const imagesToUse = imageUrls.slice(0, 3)
+  const imagesToProcess = imageUrls.slice(0, 3)
+  const fileTokens: string[] = []
 
-  console.log('[图片处理] 使用前', imagesToUse.length, '张图片URL')
+  for (let i = 0; i < imagesToProcess.length; i++) {
+    try {
+      const imageUrl = imagesToProcess[i]
+      console.log(`[图片处理] 处理第 ${i + 1} 张图片...`)
 
-  return imagesToUse
+      // 1. 下载图片
+      const imageBuffer = await downloadImage(imageUrl)
+      console.log(`[图片处理] 图片下载成功，大小: ${imageBuffer.length} bytes`)
+
+      // 2. 上传到飞书
+      const fileName = `image_${Date.now()}_${i}.jpg`
+      const fileToken = await uploadFileToFeishu(imageBuffer, fileName, appToken)
+
+      fileTokens.push(fileToken)
+      console.log(`[图片处理] 第 ${i + 1} 张图片处理完成，file_token: ${fileToken}`)
+    } catch (error) {
+      console.error(`[图片处理] 第 ${i + 1} 张图片处理失败:`, error)
+      // 继续处理下一张图片
+    }
+  }
+
+  console.log(`[图片处理] 共成功处理 ${fileTokens.length}/${imagesToProcess.length} 张图片`)
+  return fileTokens
 }
 
 /**
@@ -106,7 +142,7 @@ async function saveToFeishu(
   title: string,
   content: string,
   tags: string,
-  imageUrls: string[],
+  fileTokens: string[],
   url: string
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
@@ -118,15 +154,27 @@ async function saveToFeishu(
     '标题': title,
     '正文': content,
     '话题标签': tags,
-    '笔记链接': url  // 文本字段，直接传字符串
+    '笔记链接': url
   }
 
-  // 暂时不传递附件字段 - 飞书API只接受file_token，不接受URL
-  // 图片URL保存到文本字段中作为备用
-  if (imageUrls.length > 0) {
-    const imageUrlsText = imageUrls.join('\n')
-    fields['备注'] = `图片链接:\n${imageUrlsText}`
-    console.log('[快捷保存-飞书] 图片URL保存到备注字段，数量:', imageUrls.length)
+  // 将图片保存到附件字段（使用 file_token）
+  if (fileTokens.length > 0) {
+    fields['封面'] = [{ file_token: fileTokens[0] }]
+    console.log('[快捷保存-飞书] 封面 file_token:', fileTokens[0])
+  }
+
+  if (fileTokens.length > 1) {
+    fields['图片2'] = [{ file_token: fileTokens[1] }]
+    console.log('[快捷保存-飞书] 图片2 file_token:', fileTokens[1])
+  }
+
+  if (fileTokens.length > 2) {
+    fields['图片3'] = [{ file_token: fileTokens[2] }]
+    console.log('[快捷保存-飞书] 图片3 file_token:', fileTokens[2])
+  }
+
+  if (fileTokens.length > 0) {
+    console.log('[快捷保存-飞书] 共保存', fileTokens.length, '个图片到附件字段')
   }
 
   const response = await fetch(
@@ -191,11 +239,11 @@ export async function POST(request: NextRequest) {
     // 1. 解析小红书链接
     const { title, content, tags, images } = await parseXiaohongshu(url)
 
-    // 2. 准备图片URLs（前3张）
-    const imageUrls = prepareImageUrls(images)
+    // 2. 处理图片：下载并上传到飞书，获取 file_token
+    const fileTokens = await processImages(images, finalAppToken)
 
-    // 3. 保存到飞书表格（直接使用图片URL）
-    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, imageUrls, url)
+    // 3. 保存到飞书表格（使用 file_token）
+    await saveToFeishu(finalAppToken, finalTableId, title, content, tags, fileTokens, url)
 
     const duration = Date.now() - startTime
 
@@ -204,10 +252,10 @@ export async function POST(request: NextRequest) {
     // 4. 返回成功消息
     return NextResponse.json({
       success: true,
-      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${imageUrls.length}/${images.length}张图片URL\n⏱️ 耗时${duration}ms`,
+      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${fileTokens.length}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
       data: {
         title,
-        imageCount: imageUrls.length,
+        imageCount: fileTokens.length,
         totalImages: images.length,
         duration
       }

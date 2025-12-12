@@ -171,33 +171,31 @@ export async function getUserAccessToken(): Promise<string> {
 
 /**
  * 上传文件到飞书云文档
- * 使用 user_access_token 上传到个人表格
+ * 参考官方SDK示例：使用 bitable_image 作为 parent_type
  */
 export async function uploadFileToFeishu(
   fileBuffer: Buffer,
   fileName: string,
-  fileType: string = 'image',
-  parentType: string = 'bitable',
-  parentNode?: string
+  appToken: string
 ): Promise<string> {
-  // 使用 user_access_token 上传到个人表格
   const userAccessToken = await getUserAccessToken()
 
   console.log('[飞书文件上传] 开始上传:', fileName)
   console.log('[飞书文件上传] 使用 user_access_token')
-  console.log('[飞书文件上传] parent_type:', parentType)
-  console.log('[飞书文件上传] parent_node:', parentNode || '(未指定)')
+  console.log('[飞书文件上传] parent_type: bitable_image')
+  console.log('[飞书文件上传] parent_node (appToken):', appToken)
 
   // 构建 multipart/form-data
   const formData = new FormData()
-  // 将 Buffer 转为 Uint8Array 再创建 Blob
   const uint8Array = new Uint8Array(fileBuffer)
   const blob = new Blob([uint8Array], { type: 'image/jpeg' })
-  // 只传必需的字段
+
+  // 使用正确的参数（参考官方SDK示例）
   formData.append('file_name', fileName)
-  formData.append('file_type', 'stream')
-  formData.append('file', blob, fileName)
+  formData.append('parent_type', 'bitable_image')  // 关键修正！
+  formData.append('parent_node', appToken)          // 传递 appToken
   formData.append('size', String(fileBuffer.length))
+  formData.append('file', blob, fileName)
 
   const response = await fetch(`${FEISHU_API_URL}/drive/v1/files/upload_all`, {
     method: 'POST',
@@ -216,7 +214,7 @@ export async function uploadFileToFeishu(
 
   const fileToken = data.data.file_token
 
-  console.log('[飞书文件上传] 上传成功:', fileToken)
+  console.log('[飞书文件上传] 上传成功，file_token:', fileToken)
 
   return fileToken
 }
