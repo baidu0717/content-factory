@@ -168,13 +168,13 @@ async function saveToFeishu(
   }
 
   if (fileTokens.length > 1) {
-    fields['图片2'] = [{ file_token: fileTokens[1] }]
-    console.log('[快捷保存-飞书] 图片2 file_token:', fileTokens[1])
+    fields['图片 2'] = [{ file_token: fileTokens[1] }]
+    console.log('[快捷保存-飞书] 图片 2 file_token:', fileTokens[1])
   }
 
   if (fileTokens.length > 2) {
-    fields['图片3'] = [{ file_token: fileTokens[2] }]
-    console.log('[快捷保存-飞书] 图片3 file_token:', fileTokens[2])
+    fields['图片 3'] = [{ file_token: fileTokens[2] }]
+    console.log('[快捷保存-飞书] 图片 3 file_token:', fileTokens[2])
   }
 
   if (fileTokens.length > 0) {
