@@ -3,16 +3,45 @@
  */
 
 /**
+ * 直接读取原图（不压缩）
+ * 用于小红书发布等需要保持原图质量的场景
+ * @param file 原始图片文件
+ * @returns base64 格式的图片数据
+ */
+export async function uploadOriginalImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = (e) => {
+      const base64Data = e.target?.result as string
+
+      console.log('[原图上传] 读取成功:')
+      console.log('  文件名:', file.name)
+      console.log('  原始大小:', (file.size / 1024 / 1024).toFixed(2), 'MB')
+      console.log('  文件类型:', file.type)
+
+      resolve(base64Data)
+    }
+
+    reader.onerror = () => {
+      reject(new Error('文件读取失败'))
+    }
+
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
  * 压缩图片
  * @param file 原始图片文件
- * @param maxSize 最大尺寸（宽或高，默认2048px）
- * @param quality 压缩质量（0-1，默认0.85）
+ * @param maxSize 最大尺寸（宽或高，默认4096px）
+ * @param quality 压缩质量（0-1，默认0.95）
  * @returns base64 格式的图片数据
  */
 export async function compressImage(
   file: File,
-  maxSize: number = 2048,
-  quality: number = 0.85
+  maxSize: number = 4096,
+  quality: number = 0.95
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     // 创建 FileReader 读取文件

@@ -2,17 +2,18 @@
 
 import React, { useCallback, useState } from 'react'
 import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react'
-import { compressImage, isImageFile, validateFileSize, formatFileSize } from '@/lib/imageUtils'
+import { compressImage, uploadOriginalImage, isImageFile, validateFileSize, formatFileSize } from '@/lib/imageUtils'
 
 interface ImageUploaderProps {
   onImageSelect: (base64: string) => void
   disabled?: boolean
+  useOriginal?: boolean  // 是否使用原图（不压缩）
 }
 
-export default function ImageUploader({ onImageSelect, disabled }: ImageUploaderProps) {
+export default function ImageUploader({ onImageSelect, disabled, useOriginal = true }: ImageUploaderProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
-  const [isCompressing, setIsCompressing] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
 
   // 处理文件
@@ -25,29 +26,39 @@ export default function ImageUploader({ onImageSelect, disabled }: ImageUploader
       return
     }
 
-    // 验证文件大小（最大10MB）
-    if (!validateFileSize(file, 10)) {
-      setError(`文件过大（${formatFileSize(file.size)}），最大支持 10MB`)
+    // 验证文件大小（最大20MB，原图模式支持更大文件）
+    const maxSize = useOriginal ? 20 : 10
+    if (!validateFileSize(file, maxSize)) {
+      setError(`文件过大（${formatFileSize(file.size)}），最大支持 ${maxSize}MB`)
       return
     }
 
     try {
-      setIsCompressing(true)
+      setIsProcessing(true)
 
-      // 压缩图片
-      const compressedBase64 = await compressImage(file, 2048, 0.85)
+      let imageBase64: string
+
+      if (useOriginal) {
+        // 使用原图（不压缩）
+        imageBase64 = await uploadOriginalImage(file)
+        console.log('[ImageUploader] 使用原图模式，不压缩')
+      } else {
+        // 压缩图片
+        imageBase64 = await compressImage(file, 4096, 0.95)
+        console.log('[ImageUploader] 使用压缩模式')
+      }
 
       // 设置预览
-      setPreview(compressedBase64)
+      setPreview(imageBase64)
 
       // 回调
-      onImageSelect(compressedBase64)
+      onImageSelect(imageBase64)
 
     } catch (err) {
-      console.error('[图片上传] 压缩失败:', err)
+      console.error('[图片上传] 处理失败:', err)
       setError('图片处理失败，请重试')
     } finally {
-      setIsCompressing(false)
+      setIsProcessing(false)
     }
   }
 
@@ -118,10 +129,12 @@ export default function ImageUploader({ onImageSelect, disabled }: ImageUploader
             ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
           `}
         >
-          {isCompressing ? (
+          {isProcessing ? (
             <>
               <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-3" />
-              <p className="text-sm text-gray-600">正在压缩图片...</p>
+              <p className="text-sm text-gray-600">
+                {useOriginal ? '正在读取原图...' : '正在压缩图片...'}
+              </p>
             </>
           ) : (
             <>
@@ -130,10 +143,13 @@ export default function ImageUploader({ onImageSelect, disabled }: ImageUploader
                 点击上传或拖拽图片到这里
               </p>
               <p className="text-xs text-gray-500">
-                支持 JPG、PNG、GIF，最大 10MB
+                支持 JPG、PNG、GIF，最大 {useOriginal ? '20MB' : '10MB'}
               </p>
               <p className="text-xs text-gray-400 mt-2">
-                图片会自动压缩到 2048px 以优化处理速度
+                {useOriginal
+                  ? '✨ 原图模式：保持100%质量，适合小红书发布'
+                  : '图片会自动压缩到 4096px，质量95%'
+                }
               </p>
             </>
           )}

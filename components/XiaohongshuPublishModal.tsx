@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Loader2, CheckCircle, AlertCircle, Send, Image as ImageIcon, QrCode } from 'lucide-react'
+import { X, Loader2, CheckCircle, AlertCircle, Send, Image as ImageIcon, QrCode, ExternalLink, Copy, Check } from 'lucide-react'
 
 interface XiaohongshuPublishModalProps {
   isOpen: boolean
@@ -31,6 +31,14 @@ export default function XiaohongshuPublishModal({
 }: XiaohongshuPublishModalProps) {
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyContent = () => {
+    const textToCopy = `${article.title}\n\n${article.content}`
+    navigator.clipboard.writeText(textToCopy)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const handlePublish = async () => {
     setIsPublishing(true)
@@ -51,14 +59,17 @@ export default function XiaohongshuPublishModal({
 
       const data = await response.json()
       console.log('发布API响应:', data)
+      console.log('二维码URL:', data.data?.qrCodeUrl)
 
       if (data.success) {
-        setPublishResult({
+        const result = {
           success: true,
           qrCodeUrl: data.data?.qrCodeUrl,
           publishUrl: data.data?.publishUrl,
           message: data.message || '发布成功！请扫描二维码完成发布',
-        })
+        }
+        console.log('设置publishResult:', result)
+        setPublishResult(result)
 
         // 通知父组件发布成功
         onPublishSuccess()
@@ -162,15 +173,60 @@ export default function XiaohongshuPublishModal({
                 <div className="flex items-start">
                   <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
                   <div className="ml-3">
-                    <p className="text-sm text-blue-800 font-medium mb-1">发布说明</p>
-                    <ul className="text-xs text-blue-700 space-y-1">
-                      <li>• 文章内容将自动转换为纯文本格式</li>
-                      <li>• 图片将作为笔记配图上传</li>
-                      <li>• 发布后会生成二维码，请用手机扫码查看</li>
-                    </ul>
+                    <p className="text-sm text-blue-800 font-medium mb-2">💡 两种发布方式</p>
+
+                    <div className="mb-3">
+                      <p className="text-xs font-semibold text-blue-900 mb-1">方式1：API自动发布（需要积分）</p>
+                      <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside ml-2">
+                        <li>点击下方"确认发布"按钮</li>
+                        <li>系统自动创建笔记并生成二维码</li>
+                        <li>用小红书APP扫码完成发布</li>
+                      </ol>
+                      <p className="text-xs text-orange-600 mt-1 ml-2">⚠️ 每次发布消耗1个积分</p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold text-green-900 mb-1">方式2：网页手动发布（免费）</p>
+                      <ol className="text-xs text-green-700 space-y-1 list-decimal list-inside ml-2">
+                        <li>点击下方"打开发布网页"按钮</li>
+                        <li>手动复制粘贴内容到网页</li>
+                        <li>在网页上点击"小红书扫码发布"</li>
+                        <li>用小红书APP扫码完成发布</li>
+                      </ol>
+                      <p className="text-xs text-green-600 mt-1 ml-2">✅ 完全免费，无需积分</p>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {/* 复制内容按钮 */}
+              <button
+                onClick={handleCopyContent}
+                className="flex items-center justify-center w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-5 h-5 mr-2" />
+                    已复制内容！
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-5 h-5 mr-2" />
+                    复制文章内容
+                  </>
+                )}
+              </button>
+
+              {/* 网页发布按钮 */}
+              <a
+                href="https://note.limyai.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+              >
+                <ExternalLink className="w-5 h-5 mr-2" />
+                打开发布网页（免费，推荐）
+              </a>
             </>
           )}
 
@@ -181,8 +237,11 @@ export default function XiaohongshuPublishModal({
               <div className="flex items-start p-4 bg-green-50 border border-green-200 rounded-lg">
                 <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
                 <div className="ml-3">
-                  <p className="text-sm text-green-800 font-medium">
-                    {publishResult.message}
+                  <p className="text-sm text-green-800 font-medium mb-1">
+                    ✅ 笔记已创建成功！
+                  </p>
+                  <p className="text-xs text-green-700">
+                    请继续下面的步骤，用小红书APP扫码完成发布
                   </p>
                 </div>
               </div>
@@ -191,24 +250,85 @@ export default function XiaohongshuPublishModal({
               <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-6 border-2 border-red-200">
                 <div className="flex items-center justify-center mb-4">
                   <QrCode className="w-5 h-5 text-red-600 mr-2" />
-                  <h3 className="text-lg font-bold text-red-800">扫码查看笔记</h3>
+                  <h3 className="text-lg font-bold text-red-800">📱 扫码完成发布</h3>
                 </div>
 
-                <div className="bg-white rounded-lg p-4 shadow-lg">
-                  <img
-                    src={publishResult.qrCodeUrl}
-                    alt="小红书笔记二维码"
-                    className="w-full h-auto"
-                    onError={(e) => {
-                      console.error('二维码加载失败:', publishResult.qrCodeUrl)
-                      e.currentTarget.src = 'https://via.placeholder.com/300x300.png?text=QR+Code+Error'
-                    }}
-                  />
-                </div>
+                <div className="bg-white rounded-lg p-6 shadow-lg space-y-4">
+                  {/* 重要提示 */}
+                  <div className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0">
+                        <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">
+                          <span className="text-white text-xl font-bold">!</span>
+                        </div>
+                      </div>
+                      <div className="ml-4 flex-1">
+                        <p className="text-base font-bold text-red-800 mb-2">
+                          ⚠️ 必须使用小红书APP扫码
+                        </p>
+                        <div className="text-sm text-red-700 space-y-1">
+                          <p>❌ 不要用微信扫一扫</p>
+                          <p>❌ 不要用其他扫码工具</p>
+                          <p className="font-semibold text-red-900 mt-2">✅ 请打开小红书APP，使用APP内的扫一扫功能</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                <p className="text-center text-sm text-red-700 mt-4">
-                  使用小红书APP扫描二维码即可查看发布的笔记
-                </p>
+                  {/* 二维码显示 - 使用iframe加载外部页面 */}
+                  <div className="flex justify-center py-4">
+                    <div className="relative w-full">
+                      <div className="bg-white rounded-xl shadow-md border-4 border-red-200 overflow-hidden">
+                        <iframe
+                          src={publishResult.qrCodeUrl}
+                          title="小红书发布二维码"
+                          className="w-full h-[600px] border-0"
+                          sandbox="allow-scripts allow-same-origin allow-forms"
+                        />
+                      </div>
+                      {/* 小红书logo标识 */}
+                      <div className="absolute -top-3 -right-3 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg z-10">
+                        小红书专用
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 操作步骤 */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm font-bold text-blue-900 mb-3">📱 正确的发布流程：</p>
+                    <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
+                      <li>打开<strong>小红书APP</strong></li>
+                      <li>点击右上角"<strong>扫一扫</strong>"（或点击"<strong>我</strong>" → "<strong>扫一扫</strong>"）</li>
+                      <li>扫描上方二维码</li>
+                      <li>跳转到<strong>小程序发布页面</strong></li>
+                      <li>点击"<strong>发布</strong>"按钮完成</li>
+                    </ol>
+                  </div>
+
+                  <div className="text-center">
+                    <p className="text-xs text-gray-500">
+                      扫码后会自动跳转到小红书小程序中，在小程序内即可完成发布
+                    </p>
+                  </div>
+
+                  {/* 可选：在浏览器中打开链接 */}
+                  <details className="mt-4">
+                    <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                      高级选项：在浏览器中打开
+                    </summary>
+                    <div className="mt-2">
+                      <a
+                        href={publishResult.qrCodeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-full px-4 py-2 text-sm text-gray-600 hover:text-red-600 transition-colors border border-gray-300 rounded-lg hover:border-red-300"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        在浏览器中打开链接
+                      </a>
+                    </div>
+                  </details>
+                </div>
               </div>
 
               {/* 发布链接 */}
@@ -230,8 +350,27 @@ export default function XiaohongshuPublishModal({
             <div className="flex items-start p-4 bg-red-50 border border-red-200 rounded-lg">
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
               <div className="ml-3">
-                <p className="text-sm text-red-800 font-medium mb-1">发布失败</p>
-                <p className="text-sm text-red-700">{publishResult.error}</p>
+                <p className="text-sm text-red-800 font-medium mb-2">发布失败</p>
+                <p className="text-sm text-red-700 mb-3">{publishResult.error}</p>
+
+                {/* 积分不足特殊提示 */}
+                {publishResult.error?.includes('积分') && (
+                  <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800 font-medium mb-2">💡 如何获取积分：</p>
+                    <ol className="text-xs text-yellow-700 space-y-2 list-decimal list-inside">
+                      <li>访问 <a href="https://note.limyai.com" target="_blank" rel="noopener noreferrer" className="underline font-semibold">note.limyai.com</a></li>
+                      <li>登录你的账户（使用你的API Key对应的账号）</li>
+                      <li>查找"设置"或"账户"页面</li>
+                      <li>查看积分余额和充值选项</li>
+                      <li>如果找不到充值入口，请联系客服或技术支持</li>
+                    </ol>
+                    <div className="mt-3 p-2 bg-white border border-yellow-300 rounded">
+                      <p className="text-xs text-yellow-800">
+                        <strong>提示：</strong>测试阶段每次调用API会扣除1积分。你也可以使用下方的"网页手动发布"功能，完全免费。
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

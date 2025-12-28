@@ -109,6 +109,33 @@ function initTables() {
     ON articles(source)
   `)
 
+  // 创建飞书笔记记录表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS feishu_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      url TEXT NOT NULL,
+      tags TEXT,
+      images TEXT,
+      rewrite_status TEXT DEFAULT 'pending' CHECK(rewrite_status IN ('pending', 'done', 'skip')),
+      created_at INTEGER NOT NULL,
+      rewritten_at INTEGER,
+      article_id INTEGER
+    )
+  `)
+
+  // 创建飞书笔记表索引
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_feishu_notes_created_at
+    ON feishu_notes(created_at DESC)
+  `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_feishu_notes_status
+    ON feishu_notes(rewrite_status)
+  `)
+
   // 创建监控关键词表
   db.exec(`
     CREATE TABLE IF NOT EXISTS monitored_keywords (

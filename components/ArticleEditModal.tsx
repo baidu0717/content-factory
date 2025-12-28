@@ -30,7 +30,7 @@ interface ArticleEditModalProps {
 export default function ArticleEditModal({ isOpen, onClose, article, onSave }: ArticleEditModalProps) {
   const [title, setTitle] = useState(article.title)
   const [content, setContent] = useState(article.content)
-  const [tags, setTags] = useState<string[]>(article.tags || [])
+  const [tags, setTags] = useState<string[]>(Array.isArray(article.tags) ? article.tags : [])
   const [newTag, setNewTag] = useState('')
   const [saving, setSaving] = useState(false)
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit')
@@ -38,7 +38,7 @@ export default function ArticleEditModal({ isOpen, onClose, article, onSave }: A
   useEffect(() => {
     setTitle(article.title)
     setContent(article.content)
-    setTags(article.tags || [])
+    setTags(Array.isArray(article.tags) ? article.tags : [])
   }, [article])
 
   if (!isOpen) return null

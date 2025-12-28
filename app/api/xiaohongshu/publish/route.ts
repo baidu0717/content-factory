@@ -8,9 +8,9 @@ import {
   prepareXiaohongshuContent
 } from '@/lib/markdown-utils'
 
-// 从环境变量获取小红书API配置
-const XIAOHONGSHU_API_KEY = process.env.XIAOHONGSHU_API_KEY || ''
-const XIAOHONGSHU_API_BASE = process.env.XIAOHONGSHU_API_BASE || 'https://note.limyai.com/api/openapi'
+// 从环境变量获取小红书API配置 (myaibot.vip)
+const MYAIBOT_API_KEY = process.env.MYAIBOT_API_KEY || ''
+const MYAIBOT_API_BASE = 'https://www.myaibot.vip/api/rednote/publish'
 
 /**
  * POST /api/xiaohongshu/publish - 发布文章到小红书
@@ -37,10 +37,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 验证API密钥
-    if (!XIAOHONGSHU_API_KEY) {
-      console.log('❌ 小红书API密钥未配置')
+    if (!MYAIBOT_API_KEY) {
+      console.log('❌ MyAIBot API密钥未配置')
       return NextResponse.json(
-        { success: false, error: '小红书API密钥未配置，请联系管理员' },
+        { success: false, error: 'MyAIBot API密钥未配置，请在环境变量中设置 MYAIBOT_API_KEY' },
         { status: 500 }
       )
     }
@@ -96,29 +96,32 @@ export async function POST(req: NextRequest) {
     console.log('  - 纯文本长度:', plainTextContent.length)
     console.log('  - 纯文本预览:', plainTextContent.substring(0, 100) + '...')
 
-    // 5. 准备请求数据
+    // 5. 准备请求数据 (myaibot.vip 格式)
+    // myaibot.vip 需要所有图片放在一个 images 数组中（最多18张）
     const publishData = {
+      api_key: MYAIBOT_API_KEY,
+      type: 'normal',  // 图文笔记
       title: title,
       content: plainTextContent,
-      coverImage: coverImage,
-      images: otherImages.length > 0 ? otherImages : undefined,
-      tags: tags.length > 0 ? tags : undefined,
-      noteId: `article_${articleId}_${Date.now()}`
+      images: allImages.slice(0, 18)  // 最多18张图片
     }
 
-    console.log('\n📤 准备发送到小红书API...')
-    console.log('API地址:', `${XIAOHONGSHU_API_BASE}/publish_note`)
-    console.log('请求数据:', JSON.stringify(publishData, null, 2))
+    console.log('\n📤 准备发送到 MyAIBot API...')
+    console.log('API地址:', MYAIBOT_API_BASE)
+    console.log('请求数据:', JSON.stringify({
+      ...publishData,
+      api_key: '***已隐藏***'  // 隐藏API密钥
+    }, null, 2))
+    console.log('图片数量:', publishData.images.length)
 
     // 6. 调用小红书发布API
     console.log('\n⏰ 发起HTTP请求...')
     const apiStartTime = Date.now()
 
-    const response = await fetch(`${XIAOHONGSHU_API_BASE}/publish_note`, {
+    const response = await fetch(MYAIBOT_API_BASE, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': XIAOHONGSHU_API_KEY
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(publishData)
     })

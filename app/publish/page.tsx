@@ -321,7 +321,7 @@ export default function PublishPage() {
                         {article.title}
                       </p>
                       <div className="flex items-center mt-1 space-x-2">
-                        {article.tags.map((tag) => (
+                        {Array.isArray(article.tags) && article.tags.map((tag) => (
                           <span key={tag} className="text-xs text-gray-500">
                             #{tag}
                           </span>

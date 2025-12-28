@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { GoogleGenAI } from '@google/genai'
+import { setGlobalDispatcher, ProxyAgent } from 'undici'
+
+// 配置代理
+const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || 'http://127.0.0.1:7897'
+const proxyAgent = new ProxyAgent(HTTPS_PROXY)
+setGlobalDispatcher(proxyAgent)
+
+// Gemini API 配置
+const GEMINI_TEXT_API_KEY = process.env.GEMINI_TEXT_API_KEY || ''
+const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'
+
+// 初始化 Gemini 客户端
+const geminiClient = new GoogleGenAI({
+  apiKey: GEMINI_TEXT_API_KEY
+})
 
 export async function POST(request: NextRequest) {
   try {
     const { title, content, titlePrompt, contentPrompt } = await request.json()
-
-    // 初始化 OpenAI 客户端（在函数内部初始化，避免构建时错误）
-    const openai = new OpenAI({
-      baseURL: process.env.OPENAI_API_BASE || 'https://openrouter.ai/api/v1',
-      apiKey: process.env.OPENAI_API_KEY || '',
-    })
-
-    const MODEL = process.env.OPENAI_MODEL || 'openai/gpt-4o'
 
     // 参数验证
     if (!title && !content) {
@@ -32,23 +39,27 @@ export async function POST(request: NextRequest) {
     if (title && titlePrompt) {
       console.log('[内容改写] 正在改写标题...')
       try {
-        const titleResponse = await openai.chat.completions.create({
-          model: MODEL,
-          messages: [
-            {
-              role: 'system',
-              content: '你是一个专业的文案改写专家，擅长创作吸引人的标题。'
-            },
-            {
-              role: 'user',
-              content: `${titlePrompt}\n\n原标题：${title}`
-            }
-          ],
-          temperature: 0.8,
-          max_tokens: 200
+        const titleContents = [
+          {
+            role: 'user',
+            parts: [{
+              text: `你是一个专业的文案改写专家，擅长创作吸引人的标题。\n\n${titlePrompt}\n\n原标题：${title}`
+            }]
+          }
+        ]
+
+        const titleResponse = await geminiClient.models.generateContent({
+          model: GEMINI_TEXT_MODEL,
+          contents: titleContents,
+          config: {
+            temperature: 0.8,
+            maxOutputTokens: 200
+          }
         })
 
-        newTitle = titleResponse.choices[0]?.message?.content?.trim() || title
+        // 提取生成的文本
+        const generatedText = titleResponse.candidates?.[0]?.content?.parts?.[0]?.text
+        newTitle = generatedText?.trim() || title
         console.log('[内容改写] 新标题:', newTitle)
       } catch (error) {
         console.error('[内容改写] 标题改写失败:', error)
@@ -60,23 +71,27 @@ export async function POST(request: NextRequest) {
     if (content && contentPrompt) {
       console.log('[内容改写] 正在改写正文...')
       try {
-        const contentResponse = await openai.chat.completions.create({
-          model: MODEL,
-          messages: [
-            {
-              role: 'system',
-              content: '你是一个专业的内容创作者，擅长将内容改写为全新的、高质量的原创文章，同时保持核心观点和价值。'
-            },
-            {
-              role: 'user',
-              content: `${contentPrompt}\n\n原正文：${content}`
-            }
-          ],
-          temperature: 0.8,
-          max_tokens: 2000
+        const contentContents = [
+          {
+            role: 'user',
+            parts: [{
+              text: `你是一个专业的内容创作者，擅长将内容改写为全新的、高质量的原创文章，同时保持核心观点和价值。\n\n${contentPrompt}\n\n原正文：${content}`
+            }]
+          }
+        ]
+
+        const contentResponse = await geminiClient.models.generateContent({
+          model: GEMINI_TEXT_MODEL,
+          contents: contentContents,
+          config: {
+            temperature: 0.8,
+            maxOutputTokens: 2000
+          }
         })
 
-        newContent = contentResponse.choices[0]?.message?.content?.trim() || content
+        // 提取生成的文本
+        const generatedText = contentResponse.candidates?.[0]?.content?.parts?.[0]?.text
+        newContent = generatedText?.trim() || content
         console.log('[内容改写] 新正文长度:', newContent.length)
       } catch (error) {
         console.error('[内容改写] 正文改写失败:', error)

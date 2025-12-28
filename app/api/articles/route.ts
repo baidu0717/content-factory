@@ -100,36 +100,48 @@ export async function GET(req: NextRequest) {
     const articles = stmt.all(...params)
 
     // 解析 JSON 字段
-    const parsedArticles = articles.map((article: any) => ({
-      id: article.id,
-      title: article.title,
-      content: article.content,
-      status: article.status,
-      platforms: JSON.parse(article.platforms || '[]'),
-      source: article.source,
-      createdAt: new Date(article.created_at).toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      publishedAt: article.published_at
-        ? new Date(article.published_at).toLocaleString('zh-CN', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        : null,
-      stats: article.stats ? JSON.parse(article.stats) : null,
-      tags: JSON.parse(article.tags || '[]'),
-      error: article.error,
-      wordCount: article.word_count,
-      readingTime: article.reading_time,
-      images: JSON.parse(article.images || '[]')
-    }))
+    const parsedArticles = articles.map((article: any) => {
+      // 安全解析 tags 字段
+      let tags = []
+      try {
+        const parsedTags = JSON.parse(article.tags || '[]')
+        tags = Array.isArray(parsedTags) ? parsedTags : []
+      } catch (e) {
+        console.error('[解析tags失败] Article ID:', article.id, 'Tags值:', article.tags)
+        tags = []
+      }
+
+      return {
+        id: article.id,
+        title: article.title,
+        content: article.content,
+        status: article.status,
+        platforms: JSON.parse(article.platforms || '[]'),
+        source: article.source,
+        createdAt: new Date(article.created_at).toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        publishedAt: article.published_at
+          ? new Date(article.published_at).toLocaleString('zh-CN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          : null,
+        stats: article.stats ? JSON.parse(article.stats) : null,
+        tags,
+        error: article.error,
+        wordCount: article.word_count,
+        readingTime: article.reading_time,
+        images: JSON.parse(article.images || '[]')
+      }
+    })
 
     // 获取总数
     const countStmt = db.prepare(

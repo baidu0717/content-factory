@@ -109,7 +109,7 @@ export default function ArticlePreviewModal({ isOpen, onClose, article }: Articl
           </h1>
 
           {/* 标签 */}
-          {article.tags && article.tags.length > 0 && (
+          {Array.isArray(article.tags) && article.tags.length > 0 && (
             <div className="flex items-center mb-6 space-x-2">
               <Tag className="w-4 h-4 text-gray-400" />
               {article.tags.map((tag, index) => (
