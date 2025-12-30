@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenAI } from '@google/genai'
 import { setGlobalDispatcher, ProxyAgent } from 'undici'
 
-// 配置代理
-const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || 'http://127.0.0.1:7897'
-const proxyAgent = new ProxyAgent(HTTPS_PROXY)
-setGlobalDispatcher(proxyAgent)
+// 配置代理（仅在本地开发环境使用）
+const HTTPS_PROXY = process.env.HTTPS_PROXY || process.env.HTTP_PROXY
+if (HTTPS_PROXY) {
+  console.log('[Gemini API] 使用代理:', HTTPS_PROXY)
+  const proxyAgent = new ProxyAgent(HTTPS_PROXY)
+  setGlobalDispatcher(proxyAgent)
+} else {
+  console.log('[Gemini API] 直接访问（无代理）')
+}
 
 // Gemini API 配置
 const GEMINI_TEXT_API_KEY = process.env.GEMINI_TEXT_API_KEY || ''
