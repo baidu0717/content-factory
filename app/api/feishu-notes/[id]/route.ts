@@ -83,7 +83,7 @@ export async function PATCH(
     updateStmt.run(...updateParams)
 
     // 返回更新后的记录
-    const updatedNote = checkStmt.get(noteId)
+    const updatedNote = checkStmt.get(noteId) as any
 
     console.log('[飞书笔记记录] 更新成功')
 
@@ -91,7 +91,7 @@ export async function PATCH(
       success: true,
       data: {
         ...updatedNote,
-        images: updatedNote.images ? JSON.parse(updatedNote.images) : null
+        images: updatedNote?.images ? JSON.parse(updatedNote.images) : null
       }
     })
 
