@@ -7,10 +7,10 @@ const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
 const FEISHU_REFRESH_TOKEN = process.env.FEISHU_REFRESH_TOKEN || ''
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
 
-// 配置 KV 客户端使用 STORAGE_ 前缀（Upstash 连接时的自定义前缀）
+// 配置 KV 客户端（优先使用 KV_ 前缀，其次 STORAGE_ 前缀）
 const kv = createClient({
-  url: process.env.STORAGE_REST_API_URL || process.env.KV_REST_API_URL || '',
-  token: process.env.STORAGE_REST_API_TOKEN || process.env.KV_REST_API_TOKEN || ''
+  url: process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || '',
+  token: process.env.KV_REST_API_TOKEN || process.env.STORAGE_REST_API_TOKEN || ''
 })
 
 // 内存缓存（用于本地开发，生产环境使用 KV）
