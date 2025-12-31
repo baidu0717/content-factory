@@ -138,18 +138,11 @@ export async function POST(request: NextRequest) {
       images.push(...videoCovers)
     }
 
-    // 提取作者信息
-    const user = data.author ? {
-      nickname: data.author.nickname || data.author.name || '',
-      avatar: data.author.avatar || ''
-    } : undefined
-
     console.log('[小红书解析] 解析成功')
     console.log('[小红书解析] 标题:', title)
     console.log('[小红书解析] 正文:', content)
     console.log('[小红书解析] 话题标签:', tagsString)
     console.log('[小红书解析] 图片数量:', images.length)
-    console.log('[小红书解析] 作者昵称:', user?.nickname || '未提取到')
 
     // 返回格式化的数据
     return NextResponse.json({
@@ -159,7 +152,6 @@ export async function POST(request: NextRequest) {
         content,
         tags: tagsString,
         images,
-        user,
         id: data.id,
         createdAt: data.created_at,
         rawData: data // 保留原始数据供调试
