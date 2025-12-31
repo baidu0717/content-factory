@@ -1,0 +1,29 @@
+# 复制以下内容，导入到Vercel环境变量
+
+# AI服务
+GEMINI_TEXT_API_KEY=AIzaSy***已隐藏***
+GEMINI_TEXT_MODEL=gemini-3-pro-preview
+
+# 小红书发布
+MYAIBOT_API_KEY=rn_95b1c43fa86396bbb84b2a1c86863d7303c6d40cc217e69ea7133296cff2
+
+# 小红书采集（前端需要的变量，必须以NEXT_PUBLIC_开头）
+NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY=JZL1b7f46d7a6b92240
+NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_BASE=https://www.dajiala.com/fbmain/monitor/v3/xhs
+NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY=341289-ql9bvro52phb
+NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE=https://api.meowload.net/openapi/extract/post
+
+# 飞书多维表格
+FEISHU_APP_ID=cli_a9bac6be07789cc4
+FEISHU_APP_SECRET=kqcP7odJy9x0AhtNMR5FYg4KPXs5lwRJ
+FEISHU_REFRESH_TOKEN=ur-6hcicpzsZa4F93d.5efuznh0gWw4h4grM8aaYQM00EsD
+FEISHU_DEFAULT_APP_TOKEN=NNd8bJYazaBwHAsZ2z2cqsvmnqf
+FEISHU_DEFAULT_TABLE_ID=tblu1m2GPcFRNSPE
+FEISHU_API_URL=https://open.feishu.cn/open-apis
+
+# 飞书表格默认配置（前端需要的变量，必须以NEXT_PUBLIC_开头）
+NEXT_PUBLIC_FEISHU_DEFAULT_APP_TOKEN=NNd8bJYazaBwHAsZ2z2cqsvmnqf
+NEXT_PUBLIC_FEISHU_DEFAULT_TABLE_ID=tblu1m2GPcFRNSPE
+
+# 应用URL
+NEXT_PUBLIC_APP_URL=https://content-factory-git-main-baidu0717s-projects.vercel.app
