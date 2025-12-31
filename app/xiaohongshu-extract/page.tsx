@@ -107,11 +107,14 @@ export default function XiaohongshuExtractPage() {
       }
     }
 
-    // 加载飞书表格配置
+    // 加载飞书表格配置（优先使用 localStorage，其次使用环境变量默认值）
     const savedAppToken = localStorage.getItem('feishu_app_token')
     const savedTableId = localStorage.getItem('feishu_table_id')
-    if (savedAppToken) setAppToken(savedAppToken)
-    if (savedTableId) setTableId(savedTableId)
+    const defaultAppToken = process.env.NEXT_PUBLIC_FEISHU_DEFAULT_APP_TOKEN || ''
+    const defaultTableId = process.env.NEXT_PUBLIC_FEISHU_DEFAULT_TABLE_ID || ''
+
+    setAppToken(savedAppToken || defaultAppToken)
+    setTableId(savedTableId || defaultTableId)
   }, [])
 
   // 检查登录状态
