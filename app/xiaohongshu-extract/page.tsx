@@ -369,6 +369,7 @@ export default function XiaohongshuExtractPage() {
 
       // 准备数据
       const tags = extractedData.tags || ''
+      const nickname = extractedData.user?.nickname || ''
 
       const response = await fetch('/api/feishu/append-row', {
         method: 'POST',
@@ -380,6 +381,7 @@ export default function XiaohongshuExtractPage() {
           images: extractedData.images || [],
           content: extractedData.content || '',
           tags: tags,
+          nickname: nickname,
           url: inputUrl.trim(),
           appToken: appToken.trim(),
           tableId: tableId.trim(),

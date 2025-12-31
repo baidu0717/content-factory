@@ -19,6 +19,7 @@ interface AppendRowRequest {
   images: string[]        // 图片URL数组
   content: string         // 正文内容
   tags: string           // 话题标签
+  nickname: string       // 作者昵称
   url: string            // 笔记链接
   appToken: string       // 多维表格的 app_token
   tableId: string        // 数据表的 table_id
@@ -155,9 +156,10 @@ export async function POST(request: NextRequest) {
 
     // 解析请求参数
     const body: AppendRowRequest = await request.json()
-    const { title, images, content, tags, url, appToken, tableId } = body
+    const { title, images, content, tags, nickname, url, appToken, tableId } = body
 
     console.log('[飞书导出API] 笔记标题:', title)
+    console.log('[飞书导出API] 作者昵称:', nickname)
     console.log('[飞书导出API] 图片数量:', images.length)
     console.log('[飞书导出API] 目标表格:', appToken, tableId)
 
@@ -224,6 +226,7 @@ export async function POST(request: NextRequest) {
     // 附件类型字段格式：[{ file_token: "xxx" }]
     const recordFields: Record<string, any> = {
       '笔记链接': url,  // 多行文本类型，直接传字符串
+      '作者昵称': nickname || '',
       '标题': title,
       '正文': content || '',
       '话题标签': tags || '',
