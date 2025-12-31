@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { HttpsProxyAgent } from 'https-proxy-agent'
-import { getValidAccessToken } from '@/lib/feishu-auth'
+import { getUserAccessToken } from '@/lib/feishuAuth'
 import axios from 'axios'
 import FormData from 'form-data'
 
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取用户access_token（自动刷新）
-    const accessToken = await getValidAccessToken()
+    const accessToken = await getUserAccessToken()
 
     if (!accessToken) {
       return NextResponse.json(
