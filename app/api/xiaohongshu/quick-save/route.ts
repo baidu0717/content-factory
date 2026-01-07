@@ -90,11 +90,16 @@ async function parseXiaohongshu(url: string) {
 }
 
 /**
- * 下载图片
+ * 下载图片（需要添加 Referer header，否则小红书服务器会返回 403）
  */
 async function downloadImage(url: string): Promise<Buffer> {
   console.log('[图片下载] 下载图片:', url)
-  const response = await fetch(url)
+  const response = await fetch(url, {
+    headers: {
+      'Referer': 'https://www.xiaohongshu.com/',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+  })
 
   if (!response.ok) {
     throw new Error(`图片下载失败: ${response.status}`)
