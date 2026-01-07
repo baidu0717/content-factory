@@ -110,43 +110,71 @@ async function downloadImage(url: string): Promise<Buffer> {
 }
 
 /**
+ * 延迟函数
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
  * 处理图片：下载并上传到飞书，获取 file_token
  * 返回数组可能包含 null（失败的图片），但保持原始顺序
+ * 使用串行处理避免并发过高导致失败
  */
 async function processImages(imageUrls: string[], appToken: string): Promise<Array<string | null>> {
   console.log('[图片处理] 需要处理', imageUrls.length, '张图片')
 
-  // 处理所有图片（封面、图片2、后续图片）
-  const imagesToProcess = imageUrls
+  const results: Array<string | null> = []
 
-  // 并行处理所有图片（下载+上传同时进行）
-  console.log('[图片处理] 开始并行处理...')
-  const imagePromises = imagesToProcess.map(async (imageUrl, i) => {
+  // 串行处理每张图片，避免并发过高
+  for (let i = 0; i < imageUrls.length; i++) {
+    const imageUrl = imageUrls[i]
+
     try {
-      console.log(`[图片处理] 开始处理第 ${i + 1} 张图片...`)
+      console.log(`[图片处理] 开始处理第 ${i + 1}/${imageUrls.length} 张图片...`)
 
-      // 1. 下载图片
-      const imageBuffer = await downloadImage(imageUrl)
-      console.log(`[图片处理] 图片 ${i + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
+      // 1. 下载图片（最多重试3次）
+      let imageBuffer: Buffer | null = null
+      for (let retry = 0; retry < 3; retry++) {
+        try {
+          imageBuffer = await downloadImage(imageUrl)
+          console.log(`[图片处理] 图片 ${i + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
+          break
+        } catch (error) {
+          if (retry < 2) {
+            console.log(`[图片处理] 图片 ${i + 1} 下载失败，${retry + 1}/3 次重试...`)
+            await delay(1000) // 等待1秒后重试
+          } else {
+            throw error
+          }
+        }
+      }
+
+      if (!imageBuffer) {
+        throw new Error('下载失败')
+      }
 
       // 2. 上传到飞书
       const fileName = `image_${Date.now()}_${i}.jpg`
       const fileToken = await uploadFileToFeishu(imageBuffer, fileName, appToken)
 
-      console.log(`[图片处理] 第 ${i + 1} 张图片处理完成，file_token: ${fileToken}`)
-      return fileToken
-    } catch (error) {
-      console.error(`[图片处理] 第 ${i + 1} 张图片处理失败:`, error)
-      return null
-    }
-  })
+      console.log(`[图片处理] ✅ 第 ${i + 1} 张图片处理完成，file_token: ${fileToken}`)
+      results.push(fileToken)
 
-  // 等待所有图片处理完成（保持原始顺序，不过滤null）
-  const results = await Promise.all(imagePromises)
+      // 添加延迟，避免请求过快
+      if (i < imageUrls.length - 1) {
+        await delay(500) // 每张图片间隔500ms
+      }
+
+    } catch (error) {
+      console.error(`[图片处理] ❌ 第 ${i + 1} 张图片处理失败:`, error)
+      results.push(null)
+    }
+  }
 
   const successCount = results.filter(token => token !== null).length
-  console.log(`[图片处理] 共成功处理 ${successCount}/${imagesToProcess.length} 张图片`)
-  console.log(`[图片处理] 结果数组（保持原始顺序）:`, results.map((t, i) => t ? `图${i+1}:✓` : `图${i+1}:✗`).join(', '))
+  console.log(`[图片处理] 共成功处理 ${successCount}/${imageUrls.length} 张图片`)
+  console.log(`[图片处理] 结果数组:`, results.map((t, i) => t ? `图${i+1}:✓` : `图${i+1}:✗`).join(', '))
 
   return results
 }
