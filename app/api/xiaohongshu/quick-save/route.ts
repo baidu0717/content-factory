@@ -104,8 +104,8 @@ async function downloadImage(url: string): Promise<Buffer> {
 async function processImages(imageUrls: string[], appToken: string): Promise<string[]> {
   console.log('[图片处理] 需要处理', imageUrls.length, '张图片')
 
-  // 只取前3张图片（封面、图片2、图片3）
-  const imagesToProcess = imageUrls.slice(0, 3)
+  // 处理所有图片（封面、图片2、后续图片）
+  const imagesToProcess = imageUrls
 
   // 并行处理所有图片（下载+上传同时进行）
   console.log('[图片处理] 开始并行处理...')
@@ -168,13 +168,15 @@ async function saveToFeishu(
   }
 
   if (fileTokens.length > 1) {
-    fields['图片 2'] = [{ file_token: fileTokens[1] }]
-    console.log('[快捷保存-飞书] 图片 2 file_token:', fileTokens[1])
+    fields['图片2'] = [{ file_token: fileTokens[1] }]
+    console.log('[快捷保存-飞书] 图片2 file_token:', fileTokens[1])
   }
 
   if (fileTokens.length > 2) {
-    fields['图片 3'] = [{ file_token: fileTokens[2] }]
-    console.log('[快捷保存-飞书] 图片 3 file_token:', fileTokens[2])
+    // 第3张及以后的所有图片保存到"后续图片"字段
+    const remainingTokens = fileTokens.slice(2).map(token => ({ file_token: token }))
+    fields['后续图片'] = remainingTokens
+    console.log('[快捷保存-飞书] 后续图片 file_tokens:', fileTokens.slice(2).join(', '))
   }
 
   if (fileTokens.length > 0) {
