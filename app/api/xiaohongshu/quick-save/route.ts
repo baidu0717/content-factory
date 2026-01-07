@@ -117,58 +117,91 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * 处理单张图片：下载并上传到飞书，支持重试
+ */
+async function processImageWithRetry(
+  imageUrl: string,
+  index: number,
+  appToken: string,
+  totalCount: number
+): Promise<string | null> {
+  try {
+    console.log(`[图片处理] 开始处理第 ${index + 1}/${totalCount} 张图片...`)
+
+    // 1. 下载图片（最多重试3次）
+    let imageBuffer: Buffer | null = null
+    for (let retry = 0; retry < 3; retry++) {
+      try {
+        imageBuffer = await downloadImage(imageUrl)
+        console.log(`[图片处理] 图片 ${index + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
+        break
+      } catch (error) {
+        if (retry < 2) {
+          console.log(`[图片处理] 图片 ${index + 1} 下载失败，${retry + 1}/3 次重试...`)
+          await delay(1000) // 等待1秒后重试
+        } else {
+          throw error
+        }
+      }
+    }
+
+    if (!imageBuffer) {
+      throw new Error('下载失败')
+    }
+
+    // 2. 上传到飞书
+    const fileName = `image_${Date.now()}_${index}.jpg`
+    const fileToken = await uploadFileToFeishu(imageBuffer, fileName, appToken)
+
+    console.log(`[图片处理] ✅ 第 ${index + 1} 张图片处理完成，file_token: ${fileToken}`)
+    return fileToken
+
+  } catch (error) {
+    console.error(`[图片处理] ❌ 第 ${index + 1} 张图片处理失败:`, error)
+    return null
+  }
+}
+
+/**
  * 处理图片：下载并上传到飞书，获取 file_token
  * 返回数组可能包含 null（失败的图片），但保持原始顺序
- * 使用串行处理避免并发过高导致失败
+ * 使用有限并发（每批最多3个），兼顾速度与稳定性
  */
 async function processImages(imageUrls: string[], appToken: string): Promise<Array<string | null>> {
   console.log('[图片处理] 需要处理', imageUrls.length, '张图片')
+  console.log('[图片处理] 使用有限并发模式，每批最多 3 个并发请求')
 
-  const results: Array<string | null> = []
+  const CONCURRENCY = 3 // 并发数
+  const results: Array<string | null> = new Array(imageUrls.length).fill(null)
 
-  // 串行处理每张图片，避免并发过高
-  for (let i = 0; i < imageUrls.length; i++) {
-    const imageUrl = imageUrls[i]
+  // 分批处理，每批最多 CONCURRENCY 个并发
+  for (let i = 0; i < imageUrls.length; i += CONCURRENCY) {
+    const batchEnd = Math.min(i + CONCURRENCY, imageUrls.length)
+    const batchSize = batchEnd - i
 
-    try {
-      console.log(`[图片处理] 开始处理第 ${i + 1}/${imageUrls.length} 张图片...`)
+    console.log(`[图片处理] 📦 处理第 ${Math.floor(i / CONCURRENCY) + 1} 批，包含图片 ${i + 1}-${batchEnd}`)
 
-      // 1. 下载图片（最多重试3次）
-      let imageBuffer: Buffer | null = null
-      for (let retry = 0; retry < 3; retry++) {
-        try {
-          imageBuffer = await downloadImage(imageUrl)
-          console.log(`[图片处理] 图片 ${i + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
-          break
-        } catch (error) {
-          if (retry < 2) {
-            console.log(`[图片处理] 图片 ${i + 1} 下载失败，${retry + 1}/3 次重试...`)
-            await delay(1000) // 等待1秒后重试
-          } else {
-            throw error
-          }
-        }
-      }
+    // 当前批次的并发请求
+    const batchPromises = []
+    for (let j = 0; j < batchSize; j++) {
+      const idx = i + j
+      batchPromises.push(
+        processImageWithRetry(imageUrls[idx], idx, appToken, imageUrls.length)
+      )
+    }
 
-      if (!imageBuffer) {
-        throw new Error('下载失败')
-      }
+    // 等待当前批次完成
+    const batchResults = await Promise.all(batchPromises)
 
-      // 2. 上传到飞书
-      const fileName = `image_${Date.now()}_${i}.jpg`
-      const fileToken = await uploadFileToFeishu(imageBuffer, fileName, appToken)
+    // 将结果放回正确的索引位置
+    batchResults.forEach((result, batchIdx) => {
+      results[i + batchIdx] = result
+    })
 
-      console.log(`[图片处理] ✅ 第 ${i + 1} 张图片处理完成，file_token: ${fileToken}`)
-      results.push(fileToken)
-
-      // 添加延迟，避免请求过快
-      if (i < imageUrls.length - 1) {
-        await delay(500) // 每张图片间隔500ms
-      }
-
-    } catch (error) {
-      console.error(`[图片处理] ❌ 第 ${i + 1} 张图片处理失败:`, error)
-      results.push(null)
+    // 批次间延迟，避免触发频率限制
+    if (batchEnd < imageUrls.length) {
+      console.log(`[图片处理] ⏸️  批次完成，等待 300ms 后继续...`)
+      await delay(300)
     }
   }
 
