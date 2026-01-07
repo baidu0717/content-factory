@@ -70,19 +70,18 @@ async function parseXiaohongshu(url: string) {
     content = title
   }
 
-  // 提取图片
+  // 提取图片：按原始顺序，image取resource_url，video取preview_url（动图封面）
   const images = data.medias
-    ?.filter((media: any) => media.media_type === 'image')
-    .map((media: any) => media.resource_url)
+    ?.map((media: any) => {
+      if (media.media_type === 'image') {
+        return media.resource_url
+      } else if (media.media_type === 'video' && media.preview_url) {
+        // 动图（livephoto）使用封面图
+        return media.preview_url
+      }
+      return null
+    })
     .filter(Boolean) || []
-
-  if (images.length === 0) {
-    const videoCovers = data.medias
-      ?.filter((media: any) => media.media_type === 'video' && media.preview_url)
-      .map((media: any) => media.preview_url)
-      .filter(Boolean) || []
-    images.push(...videoCovers)
-  }
 
   console.log('[快捷保存-解析] 解析成功 - 标题:', title, '图片数:', images.length)
 
