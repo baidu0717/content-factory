@@ -17,7 +17,8 @@ import {
   Clock,
   Sparkles,
   Image,
-  Database
+  Database,
+  Target
 } from 'lucide-react'
 
 const menuItems = [
@@ -50,6 +51,12 @@ const menuItems = [
     label: '小红书采集',
     icon: Database,
     description: '提取笔记 + 保存飞书'
+  },
+  {
+    href: '/collect',
+    label: '批量采集',
+    icon: Target,
+    description: '关键词批量采集笔记'
   },
   {
     href: '/image-generate',

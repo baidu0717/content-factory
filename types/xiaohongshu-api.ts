@@ -80,7 +80,7 @@ export interface XiaohongshuSearchParams {
    */
   key: string;
   /**
-   * 类型 1-搜索笔记
+   * 类型 1-搜索笔记(Web API), 9-搜索笔记v2(APP API)
    */
   type: number;
   /**
@@ -88,13 +88,16 @@ export interface XiaohongshuSearchParams {
    */
   keyword: string;
   /**
-   * 页码
+   * 页码（APP API v2 需要字符串）
    */
-  page: number;
+  page: number | string;
   /**
-   * 排序方式 general-综合, time_descending-最新, popularity_descending-最热
+   * 排序方式
+   * Web API (type=1): general-综合, hot-热度, new-最新
+   * APP API v2 (type=9): comment_descending-评论数, collect_descending-收藏数,
+   *                      popularity_descending-点赞数, time_descending-时间, general-综合
    */
-  sort: string;
+  sort: 'general' | 'hot' | 'new' | 'comment_descending' | 'collect_descending' | 'popularity_descending' | 'time_descending';
   /**
    * 笔记类型 image-图文, video-视频
    */
@@ -104,13 +107,21 @@ export interface XiaohongshuSearchParams {
    */
   note_time: string;
   /**
-   * 笔记范围 不限
+   * 笔记范围 不限（Web API 专用，可选）
    */
-  note_range: string;
+  note_range?: string;
   /**
-   * 代理
+   * 代理（可选）
    */
-  proxy: string;
+  proxy?: string;
+  /**
+   * APP API v2专用：搜索ID（用于分页，首次请求为空）
+   */
+  searchId?: string;
+  /**
+   * APP API v2专用：会话ID（用于分页，首次请求为空）
+   */
+  sessionId?: string;
 }
 
 // 标准化的笔记数据结构，便于前端统一处理
