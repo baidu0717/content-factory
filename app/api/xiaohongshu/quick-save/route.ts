@@ -31,6 +31,12 @@ async function parseXiaohongshu(url: string) {
   }
 
   const data = await response.json()
+
+  // 详细日志：打印完整的 API 响应
+  console.log('[快捷保存-解析] API 完整响应:', JSON.stringify(data, null, 2))
+  console.log('[快捷保存-解析] medias 数组长度:', data.medias?.length || 0)
+  console.log('[快捷保存-解析] medias 详情:', JSON.stringify(data.medias, null, 2))
+
   const rawText = data.text || ''
 
   // 提取话题标签
@@ -129,12 +135,14 @@ async function processImages(imageUrls: string[], appToken: string): Promise<str
     }
   })
 
-  // 等待所有图片处理完成
+  // 等待所有图片处理完成（保持原始顺序，不过滤null）
   const results = await Promise.all(imagePromises)
-  const fileTokens = results.filter((token): token is string => token !== null)
 
-  console.log(`[图片处理] 共成功处理 ${fileTokens.length}/${imagesToProcess.length} 张图片`)
-  return fileTokens
+  const successCount = results.filter(token => token !== null).length
+  console.log(`[图片处理] 共成功处理 ${successCount}/${imagesToProcess.length} 张图片`)
+  console.log(`[图片处理] 结果数组（保持原始顺序）:`, results.map((t, i) => t ? `图${i+1}:✓` : `图${i+1}:✗`).join(', '))
+
+  return results
 }
 
 /**
@@ -146,7 +154,7 @@ async function saveToFeishu(
   title: string,
   content: string,
   tags: string,
-  fileTokens: string[],
+  fileTokens: Array<string | null>,
   url: string
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
@@ -161,27 +169,35 @@ async function saveToFeishu(
     '笔记链接': url
   }
 
-  // 将图片保存到附件字段（使用 file_token）
-  if (fileTokens.length > 0) {
+  // 将图片保存到附件字段（使用 file_token，跳过失败的图片）
+  // 封面 - 第1张（索引0）
+  if (fileTokens[0]) {
     fields['封面'] = [{ file_token: fileTokens[0] }]
-    console.log('[快捷保存-飞书] 封面 file_token:', fileTokens[0])
+    console.log('[快捷保存-飞书] 封面(图1) file_token:', fileTokens[0])
   }
 
-  if (fileTokens.length > 1) {
+  // 图片2 - 第2张（索引1）
+  if (fileTokens[1]) {
     fields['图片2'] = [{ file_token: fileTokens[1] }]
-    console.log('[快捷保存-飞书] 图片2 file_token:', fileTokens[1])
+    console.log('[快捷保存-飞书] 图片2(图2) file_token:', fileTokens[1])
   }
 
+  // 后续图片 - 第3张及以后（索引2+）
   if (fileTokens.length > 2) {
-    // 第3张及以后的所有图片保存到"后续图片"字段
-    const remainingTokens = fileTokens.slice(2).map(token => ({ file_token: token }))
-    fields['后续图片'] = remainingTokens
-    console.log('[快捷保存-飞书] 后续图片 file_tokens:', fileTokens.slice(2).join(', '))
+    // 只保存非null的file_token，但保持顺序
+    const remainingTokens = fileTokens
+      .slice(2)
+      .filter((token): token is string => token !== null)
+      .map(token => ({ file_token: token }))
+
+    if (remainingTokens.length > 0) {
+      fields['后续图片'] = remainingTokens
+      console.log('[快捷保存-飞书] 后续图片(图3+):', remainingTokens.length, '张')
+    }
   }
 
-  if (fileTokens.length > 0) {
-    console.log('[快捷保存-飞书] 共保存', fileTokens.length, '个图片到附件字段')
-  }
+  const totalSaved = [fileTokens[0], fileTokens[1], ...fileTokens.slice(2)].filter(Boolean).length
+  console.log('[快捷保存-飞书] 共保存', totalSaved, '个图片到附件字段')
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
@@ -256,12 +272,13 @@ export async function POST(request: NextRequest) {
     console.log('[快捷保存] 保存成功! 耗时:', duration + 'ms')
 
     // 4. 返回成功消息
+    const successImages = fileTokens.filter(token => token !== null).length
     return NextResponse.json({
       success: true,
-      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${fileTokens.length}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
+      message: `✅ 保存成功!\n\n📝 ${title}\n📸 ${successImages}/${images.length}张图片\n⏱️ 耗时${duration}ms`,
       data: {
         title,
-        imageCount: fileTokens.length,
+        imageCount: successImages,
         totalImages: images.length,
         duration
       }
