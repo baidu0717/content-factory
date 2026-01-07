@@ -106,8 +106,9 @@ async function downloadImage(url: string): Promise<Buffer> {
 
 /**
  * 处理图片：下载并上传到飞书，获取 file_token
+ * 返回数组可能包含 null（失败的图片），但保持原始顺序
  */
-async function processImages(imageUrls: string[], appToken: string): Promise<string[]> {
+async function processImages(imageUrls: string[], appToken: string): Promise<Array<string | null>> {
   console.log('[图片处理] 需要处理', imageUrls.length, '张图片')
 
   // 处理所有图片（封面、图片2、后续图片）

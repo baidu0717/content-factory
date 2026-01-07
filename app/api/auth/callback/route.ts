@@ -135,10 +135,14 @@ export async function GET(request: NextRequest) {
     saveToken(tokenData)
 
     console.log('[飞书OAuth] 授权流程完成！')
+    console.log('📋 请将以下 refresh_token 复制到 .env.local 文件中：')
+    console.log('FEISHU_REFRESH_TOKEN=' + tokenData.refresh_token)
     console.log('='.repeat(80))
 
-    // 重定向回采集页面
-    return NextResponse.redirect(new URL('/xiaohongshu-extract?auth=success', request.url))
+    // 重定向到成功页面，显示 refresh_token
+    const successUrl = new URL('/auth/success', request.url)
+    successUrl.searchParams.set('refresh_token', tokenData.refresh_token)
+    return NextResponse.redirect(successUrl)
   } catch (error) {
     console.error('[飞书OAuth] 授权失败:', error)
     console.log('='.repeat(80))

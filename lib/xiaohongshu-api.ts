@@ -46,9 +46,12 @@ export async function searchXiaohongshuNotes(
     page: params.page || 1,
     sort: params.sort || 'general',
     note_type: params.note_type || 'image',
-    note_time: params.note_time || '不限',
+    note_time: params.note_time !== undefined ? params.note_time : '不限',
     note_range: params.note_range || '不限',
-    proxy: params.proxy || '',
+    proxy: params.proxy !== undefined ? params.proxy : '',
+    // APP API v2专用参数（如果提供）
+    ...(params.searchId !== undefined && { searchId: params.searchId }),
+    ...(params.sessionId !== undefined && { sessionId: params.sessionId }),
   }
 
   console.log('请求参数:', JSON.stringify(requestBody, null, 2))
@@ -90,7 +93,9 @@ export async function searchXiaohongshuNotes(
     // 检查API返回的状态码（成功时code为0）
     if (data.code !== 0) {
       console.log('❌ API返回错误状态码:', data.code)
-      throw new Error('API请求失败')
+      console.log('❌ 完整响应数据:', JSON.stringify(data, null, 2))
+      const errorMsg = (data as any).msg || (data as any).message || 'API请求失败'
+      throw new Error(`API错误 (code: ${data.code}): ${errorMsg}`)
     }
 
     const endTime = Date.now()
@@ -116,35 +121,79 @@ export async function searchXiaohongshuNotes(
  * @returns XiaohongshuNote[]
  */
 export function transformToNotes(apiResponse: XiaohongshuApiResponse): XiaohongshuNote[] {
-  console.log('🔄 开始转换笔记数据，总数:', apiResponse.items?.length || 0)
+  // 检测API版本：APP API v2的数据在data.items中，Web API的数据直接在items中
+  const isAppApiV2 = !!(apiResponse as any).data?.items
+  const items = isAppApiV2 ? (apiResponse as any).data.items : apiResponse.items
 
-  const notes = apiResponse.items
-    .filter(item => item.note_card) // 过滤掉没有note_card的项
-    .map((item, index) => {
-      const noteCard = item.note_card!
-      const interactInfo = noteCard.interact_info
+  console.log('🔄 开始转换笔记数据，总数:', items?.length || 0)
+  console.log('📱 API版本:', isAppApiV2 ? 'APP API v2' : 'Web API')
 
-      // 将字符串数字转换为number
-      const likedCount = parseInt(interactInfo.liked_count) || 0
-      const collectedCount = parseInt(interactInfo.collected_count) || 0
-      const commentCount = parseInt(interactInfo.comment_count) || 0
-      const sharedCount = parseInt(interactInfo.shared_count) || 0
+  if (!items || items.length === 0) {
+    console.log('⚠️ 没有找到笔记数据')
+    return []
+  }
 
-      console.log(`  [${index + 1}] ID: ${item.id}, xsec_token: ${item.xsec_token}`)
+  const notes = items
+    .filter((item: any) => {
+      // APP API v2使用item.note，Web API使用item.note_card
+      if (isAppApiV2) {
+        return item.note
+      } else {
+        return item.note_card
+      }
+    })
+    .map((item: any, index: number) => {
+      // 根据API版本获取笔记数据
+      const noteData = isAppApiV2 ? item.note : item.note_card
 
-      return {
-        id: item.id,
-        xsec_token: item.xsec_token, // 保存 xsec_token，用于获取详情
-        title: noteCard.display_title || '无标题',
-        cover: noteCard.cover.url_default,
-        liked_count: likedCount,
-        collected_count: collectedCount,
-        comment_count: commentCount,
-        shared_count: sharedCount,
-        interact_count: likedCount + collectedCount + commentCount,
-        user_name: noteCard.user.nickname || noteCard.user.nick_name,
-        user_avatar: noteCard.user.avatar,
-        type: noteCard.type,
+      if (isAppApiV2) {
+        // APP API v2的数据结构
+        const likedCount = noteData.liked_count || 0
+        const collectedCount = noteData.collected_count || 0
+        const commentCount = noteData.comments_count || 0
+        const sharedCount = noteData.shared_count || 0
+
+        console.log(`  [${index + 1}] ID: ${noteData.id}`)
+
+        return {
+          id: noteData.id,
+          xsec_token: '', // APP API v2没有xsec_token
+          title: noteData.title || '无标题',
+          cover: noteData.images_list?.[0]?.url || '',
+          liked_count: likedCount,
+          collected_count: collectedCount,
+          comment_count: commentCount,
+          shared_count: sharedCount,
+          interact_count: likedCount + collectedCount + commentCount,
+          user_name: noteData.user?.nickname || '',
+          user_avatar: noteData.user?.images || '',
+          type: noteData.type || 'normal',
+        }
+      } else {
+        // Web API的数据结构
+        const interactInfo = noteData.interact_info
+
+        const likedCount = parseInt(interactInfo.liked_count) || 0
+        const collectedCount = parseInt(interactInfo.collected_count) || 0
+        const commentCount = parseInt(interactInfo.comment_count) || 0
+        const sharedCount = parseInt(interactInfo.shared_count) || 0
+
+        console.log(`  [${index + 1}] ID: ${item.id}, xsec_token: ${item.xsec_token}`)
+
+        return {
+          id: item.id,
+          xsec_token: item.xsec_token,
+          title: noteData.display_title || '无标题',
+          cover: noteData.cover.url_default,
+          liked_count: likedCount,
+          collected_count: collectedCount,
+          comment_count: commentCount,
+          shared_count: sharedCount,
+          interact_count: likedCount + collectedCount + commentCount,
+          user_name: noteData.user.nickname || noteData.user.nick_name,
+          user_avatar: noteData.user.avatar,
+          type: noteData.type,
+        }
       }
     })
 
