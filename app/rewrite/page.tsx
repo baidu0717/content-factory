@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Link as LinkIcon,
   Sparkles,
@@ -43,6 +44,9 @@ interface RewriteResult {
 }
 
 export default function RewritePage() {
+  // ===== URL参数 =====
+  const searchParams = useSearchParams()
+
   // ===== 状态管理 =====
   const [pageState, setPageState] = useState<PageState>('empty')
   const [xiaohongshuUrl, setXiaohongshuUrl] = useState('')
@@ -51,6 +55,30 @@ export default function RewritePage() {
 
   // 原始笔记数据
   const [originalNote, setOriginalNote] = useState<OriginalNote | null>(null)
+
+  // ===== 从URL参数预填充数据 =====
+  useEffect(() => {
+    const title = searchParams.get('title')
+    const content = searchParams.get('content')
+    const tags = searchParams.get('tags')
+
+    if (title && content) {
+      console.log('[小红书复刻] 从URL参数加载笔记数据')
+
+      // 组合标题和话题标签
+      let fullContent = content
+      if (tags) {
+        fullContent += '\n\n' + tags
+      }
+
+      setOriginalNote({
+        title,
+        content: fullContent,
+        images: []
+      })
+      setPageState('parsed')
+    }
+  }, [searchParams])
 
   // 提示词设置
   const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为更吸引人的新标题，保持原意但使用不同的表达方式，避免抄袭：')
