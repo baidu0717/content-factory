@@ -33,6 +33,7 @@ type PageState = 'empty' | 'parsed' | 'processing' | 'completed'
 interface OriginalNote {
   title: string
   content: string
+  tags: string  // 话题标签
   images: string[]
 }
 
@@ -59,15 +60,10 @@ function URLParamsLoader({
     if (title && content) {
       console.log('[小红书复刻] 从URL参数加载笔记数据')
 
-      // 组合标题和话题标签
-      let fullContent = content
-      if (tags) {
-        fullContent += '\n\n' + tags
-      }
-
       onLoad({
         title,
-        content: fullContent,
+        content,
+        tags: tags || '',
         images: []
       })
     }
@@ -86,9 +82,17 @@ function RewritePageContent() {
   // 原始笔记数据
   const [originalNote, setOriginalNote] = useState<OriginalNote | null>(null)
 
+  // 可编辑的内容（用户可以在改写前或改写后编辑）
+  const [editableTitle, setEditableTitle] = useState('')
+  const [editableContent, setEditableContent] = useState('')
+  const [editableTags, setEditableTags] = useState('')
+
   // ===== 从URL参数预填充数据 =====
   const handleURLParamsLoad = (note: OriginalNote) => {
     setOriginalNote(note)
+    setEditableTitle(note.title)
+    setEditableContent(note.content)
+    setEditableTags(note.tags)
     setPageState('parsed')
   }
 
@@ -149,10 +153,14 @@ function RewritePageContent() {
       const parsedNote: OriginalNote = {
         title: title || '未获取到标题',
         content: content || '未获取到正文内容',
+        tags: '',  // 从链接解析时没有tags
         images: images || []
       }
 
       setOriginalNote(parsedNote)
+      setEditableTitle(parsedNote.title)
+      setEditableContent(parsedNote.content)
+      setEditableTags(parsedNote.tags)
       setPageState('parsed')
       console.log('[小红书复刻] 解析成功')
       console.log('[小红书复刻] 标题:', parsedNote.title)
@@ -174,7 +182,7 @@ function RewritePageContent() {
     setParseError('')
 
     try {
-      // 1. 改写标题和正文
+      // 1. 改写标题和正文（使用可编辑的内容）
       console.log('[小红书复刻] 开始改写内容')
       const rewriteResponse = await fetch('/api/xiaohongshu/rewrite', {
         method: 'POST',
@@ -182,8 +190,8 @@ function RewritePageContent() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: originalNote.title,
-          content: originalNote.content,
+          title: editableTitle,
+          content: editableContent,
           titlePrompt: titlePrompt,
           contentPrompt: contentPrompt
         })
@@ -558,46 +566,137 @@ function RewritePageContent() {
                   <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
                     <Check className="w-5 h-5 text-green-600" />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900">解析成功</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">内容已加载</h3>
                 </div>
 
                 <div className="space-y-6">
-                  {/* 原始内容 */}
-                  <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
-                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                      <FileText className="w-5 h-5 mr-2 text-blue-600" />
-                      原始内容
-                    </h4>
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">标题:</p>
-                        <p className="text-sm text-gray-900 font-medium">{originalNote.title}</p>
+                  {/* 可编辑的内容区域 */}
+                  <div className="space-y-4">
+                    {/* 标题编辑框 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700 flex items-center">
+                          <Type className="w-4 h-4 mr-1 text-pink-600" />
+                          标题
+                        </label>
+                        <button
+                          onClick={async () => {
+                            setProcessingStep('正在改写标题...')
+                            try {
+                              const response = await fetch('/api/xiaohongshu/rewrite', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  title: editableTitle,
+                                  content: editableContent,
+                                  titlePrompt: titlePrompt,
+                                  contentPrompt: contentPrompt
+                                })
+                              })
+                              const result = await response.json()
+                              if (result.success) {
+                                setEditableTitle(result.data.newTitle)
+                              }
+                            } catch (error) {
+                              console.error('改写标题失败:', error)
+                            }
+                          }}
+                          className="px-3 py-1 text-xs bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 flex items-center"
+                        >
+                          <Wand2 className="w-3 h-3 mr-1" />
+                          一键改写
+                        </button>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">正文:</p>
-                        <p className="text-sm text-gray-700 line-clamp-4 whitespace-pre-wrap">{originalNote.content}</p>
+                      <textarea
+                        value={editableTitle}
+                        onChange={(e) => setEditableTitle(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 resize-none"
+                        rows={2}
+                        placeholder="输入标题..."
+                      />
+                    </div>
+
+                    {/* 正文编辑框 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700 flex items-center">
+                          <AlignLeft className="w-4 h-4 mr-1 text-blue-600" />
+                          正文
+                        </label>
+                        <button
+                          onClick={async () => {
+                            setProcessingStep('正在改写正文...')
+                            try {
+                              const response = await fetch('/api/xiaohongshu/rewrite', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  title: editableTitle,
+                                  content: editableContent,
+                                  titlePrompt: titlePrompt,
+                                  contentPrompt: contentPrompt
+                                })
+                              })
+                              const result = await response.json()
+                              if (result.success) {
+                                setEditableContent(result.data.newContent)
+                              }
+                            } catch (error) {
+                              console.error('改写正文失败:', error)
+                            }
+                          }}
+                          className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center"
+                        >
+                          <Wand2 className="w-3 h-3 mr-1" />
+                          一键改写
+                        </button>
                       </div>
+                      <textarea
+                        value={editableContent}
+                        onChange={(e) => setEditableContent(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                        rows={8}
+                        placeholder="输入正文..."
+                      />
+                    </div>
+
+                    {/* 话题标签编辑框 */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        <span className="text-purple-600 mr-1">#</span>
+                        话题标签
+                        <span className="ml-2 text-xs text-gray-500">（多个标签用空格分隔）</span>
+                      </label>
+                      <textarea
+                        value={editableTags}
+                        onChange={(e) => setEditableTags(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                        rows={2}
+                        placeholder="例如：#旅行 #美食 #生活记录"
+                      />
                     </div>
                   </div>
 
                   {/* 原始图片 */}
-                  <div>
-                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                      <ImageIcon className="w-5 h-5 mr-2 text-purple-600" />
-                      原始图片 (共{originalNote.images.length}张)
-                    </h4>
-                    <div className="grid grid-cols-3 gap-3">
-                      {originalNote.images.map((img, index) => (
-                        <div key={index} className="aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-purple-400 transition-colors">
-                          <img src={img} alt={`原图 ${index + 1}`} className="w-full h-full object-cover" />
-                        </div>
-                      ))}
+                  {originalNote.images.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+                        <ImageIcon className="w-5 h-5 mr-2 text-purple-600" />
+                        原始图片 (共{originalNote.images.length}张)
+                      </h4>
+                      <div className="grid grid-cols-3 gap-3">
+                        {originalNote.images.map((img, index) => (
+                          <div key={index} className="aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-purple-400 transition-colors">
+                            <img src={img} alt={`原图 ${index + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="pt-4 border-t border-gray-200">
                     <p className="text-sm text-gray-500 text-center">
-                      ✨ 配置好左侧的改写设置后，点击"开始复刻"按钮
+                      ✨ 编辑好内容后，点击"开始复刻"按钮生成新图片
                     </p>
                   </div>
                 </div>
