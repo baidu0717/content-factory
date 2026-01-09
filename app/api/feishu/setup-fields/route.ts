@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
         '3. 字段类型：选择"按钮"',
         '4. 按钮类型：打开链接',
         '5. 按钮文字：去复刻',
-        '6. 链接地址：https://xiaohongshu-collect.vercel.app/rewrite?title={{标题}}&content={{正文}}&tags={{话题标签}}',
+        '6. 链接地址：https://content-factory-jade-nine.vercel.app/rewrite?title={{标题}}&content={{正文}}&tags={{话题标签}}',
         '7. 勾选"在新标签页打开"',
         '',
         '注意：按钮字段无法通过API自动创建，必须手动在飞书界面中添加',

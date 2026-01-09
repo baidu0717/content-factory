@@ -132,7 +132,7 @@ async function main() {
     console.log('\n📝 提示:')
     console.log('1. 请手动将"笔记链接"列拖到第1列位置')
     console.log('2. 可以手动添加"去复刻"按钮字段（类型：按钮），配置链接为:')
-    console.log('   https://xiaohongshu-collect.vercel.app/rewrite?title={标题}&content={正文}&tags={话题标签}')
+    console.log('   https://content-factory-jade-nine.vercel.app/rewrite?title={标题}&content={正文}&tags={话题标签}')
 
   } catch (error) {
     console.error('❌ 配置失败:', error)
