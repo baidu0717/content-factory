@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Link as LinkIcon,
@@ -43,20 +43,14 @@ interface RewriteResult {
   newImages: string[]
 }
 
-export default function RewritePage() {
-  // ===== URL参数 =====
+// URL参数加载组件（需要包裹在Suspense中）
+function URLParamsLoader({
+  onLoad
+}: {
+  onLoad: (note: OriginalNote) => void
+}) {
   const searchParams = useSearchParams()
 
-  // ===== 状态管理 =====
-  const [pageState, setPageState] = useState<PageState>('empty')
-  const [xiaohongshuUrl, setXiaohongshuUrl] = useState('')
-  const [isParsing, setIsParsing] = useState(false)
-  const [parseError, setParseError] = useState('')
-
-  // 原始笔记数据
-  const [originalNote, setOriginalNote] = useState<OriginalNote | null>(null)
-
-  // ===== 从URL参数预填充数据 =====
   useEffect(() => {
     const title = searchParams.get('title')
     const content = searchParams.get('content')
@@ -71,14 +65,32 @@ export default function RewritePage() {
         fullContent += '\n\n' + tags
       }
 
-      setOriginalNote({
+      onLoad({
         title,
         content: fullContent,
         images: []
       })
-      setPageState('parsed')
     }
-  }, [searchParams])
+  }, [searchParams, onLoad])
+
+  return null
+}
+
+function RewritePageContent() {
+  // ===== 状态管理 =====
+  const [pageState, setPageState] = useState<PageState>('empty')
+  const [xiaohongshuUrl, setXiaohongshuUrl] = useState('')
+  const [isParsing, setIsParsing] = useState(false)
+  const [parseError, setParseError] = useState('')
+
+  // 原始笔记数据
+  const [originalNote, setOriginalNote] = useState<OriginalNote | null>(null)
+
+  // ===== 从URL参数预填充数据 =====
+  const handleURLParamsLoad = (note: OriginalNote) => {
+    setOriginalNote(note)
+    setPageState('parsed')
+  }
 
   // 提示词设置
   const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为更吸引人的新标题，保持原意但使用不同的表达方式，避免抄袭：')
@@ -282,6 +294,11 @@ export default function RewritePage() {
 
   return (
     <div className="p-6">
+      {/* URL参数加载器 */}
+      <Suspense fallback={null}>
+        <URLParamsLoader onLoad={handleURLParamsLoad} />
+      </Suspense>
+
       {/* 页面标题 */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center">
@@ -735,4 +752,9 @@ export default function RewritePage() {
       </div>
     </div>
   )
+}
+
+// 主导出组件
+export default function RewritePage() {
+  return <RewritePageContent />
 }
