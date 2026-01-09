@@ -134,7 +134,32 @@ async function parseXiaohongshu(url: string) {
   const likedCount = noteData.liked_count || 0
   const collectedCount = noteData.collected_count || 0
   const commentCount = noteData.comments_count || 0
-  const publishTime = noteData.time || noteData.create_time || ''
+
+  // 发布时间（将时间戳转换为可读格式）
+  let publishTime = ''
+  const timestamp = noteData.time || noteData.create_time
+  if (timestamp) {
+    // 如果是Unix时间戳（10位秒或13位毫秒），转换为日期字符串
+    const timestampNum = typeof timestamp === 'string' ? parseInt(timestamp) : timestamp
+    if (timestampNum && !isNaN(timestampNum)) {
+      // 如果是10位秒级时间戳，转换为毫秒
+      const ms = timestampNum.toString().length === 10 ? timestampNum * 1000 : timestampNum
+      const date = new Date(ms)
+      // 格式化为 YYYY-MM-DD HH:mm:ss
+      publishTime = date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).replace(/\//g, '-')
+    } else {
+      // 如果已经是字符串格式，直接使用
+      publishTime = String(timestamp)
+    }
+  }
 
   // 提取图片（极致了API的图片在images_list中）
   const images = noteData.images_list?.map((img: any) => {
