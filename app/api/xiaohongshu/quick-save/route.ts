@@ -126,8 +126,8 @@ async function parseXiaohongshu(url: string) {
   // 提取数据
   const title = noteData.title || ''
 
-  // 提取话题标签
-  const tags = noteData.hash_tag?.map((tag: any) => `#${tag.name}#`).join(' ') || ''
+  // 提取话题标签（格式：#话题名 空格分隔，单个#）
+  const tags = noteData.hash_tag?.map((tag: any) => `#${tag.name}`).join(' ') || ''
 
   // 提取正文并清理末尾的话题标签
   const rawContent = noteData.desc || ''
