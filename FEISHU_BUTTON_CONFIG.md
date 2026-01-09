@@ -19,7 +19,7 @@
 - **按钮文字**：去复刻
 - **链接地址**：
   ```
-  https://xiaohongshu-collect.vercel.app/rewrite?title={{标题}}&content={{正文}}&tags={{话题标签}}
+  https://content-factory-jade-nine.vercel.app/rewrite?title={{标题}}&content={{正文}}&tags={{话题标签}}
   ```
 - **打开方式**：✅ 在新标签页打开
 
@@ -75,7 +75,7 @@
 
 按钮配置的链接地址：
 ```
-https://xiaohongshu-collect.vercel.app/rewrite?title={{标题}}&content={{正文}}&tags={{话题标签}}
+https://content-factory-jade-nine.vercel.app/rewrite?title={{标题}}&content={{正文}}&tags={{话题标签}}
 ```
 
 ## 如果仍然无法跳转
