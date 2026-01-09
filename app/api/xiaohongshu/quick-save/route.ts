@@ -125,8 +125,25 @@ async function parseXiaohongshu(url: string) {
 
   // 提取数据
   const title = noteData.title || ''
-  const content = noteData.desc || ''
+
+  // 提取话题标签
   const tags = noteData.hash_tag?.map((tag: any) => `#${tag.name}#`).join(' ') || ''
+
+  // 提取正文并清理话题标签
+  const rawContent = noteData.desc || ''
+  let content = rawContent
+  // 移除 #话题名[话题]# 格式的话题标签
+  content = content.replace(/#[^#]+\[话题\]#/g, '')
+  // 移除 #话题名# 格式的话题标签（如果有）
+  content = content.replace(/#[^#\s]+#/g, '')
+  // 移除 @提及
+  content = content.replace(/@[^\s]+/g, '')
+  // 清理多余的空格和换行
+  content = content.replace(/\s+/g, ' ').trim()
+
+  console.log('[快捷保存-解析] 原始正文:', rawContent)
+  console.log('[快捷保存-解析] 清理后正文:', content)
+
   const authorName = noteData.user?.nickname || noteData.user?.nick_name || noteData.user?.name || ''
 
   // 互动数据
