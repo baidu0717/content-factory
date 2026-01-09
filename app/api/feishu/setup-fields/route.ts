@@ -134,8 +134,17 @@ export async function GET(request: NextRequest) {
       results,
       tips: [
         '请手动将"笔记链接"列拖到第1列位置',
-        '可以手动添加"去复刻"按钮字段（类型：按钮），配置链接为:',
-        'https://xiaohongshu-collect.vercel.app/rewrite?title={标题}&content={正文}&tags={话题标签}',
+        '',
+        '📌 手动创建"去复刻"按钮字段的步骤：',
+        '1. 在表格中点击"+"添加新字段',
+        '2. 字段名称：去复刻',
+        '3. 字段类型：选择"按钮"',
+        '4. 按钮类型：打开链接',
+        '5. 按钮文字：去复刻',
+        '6. 链接地址：https://xiaohongshu-collect.vercel.app/rewrite?title={{标题}}&content={{正文}}&tags={{话题标签}}',
+        '7. 勾选"在新标签页打开"',
+        '',
+        '注意：按钮字段无法通过API自动创建，必须手动在飞书界面中添加',
       ],
     })
 
