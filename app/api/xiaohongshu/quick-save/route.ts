@@ -328,21 +328,21 @@ async function saveToFeishu(
 
   const appAccessToken = await getAppAccessToken()
 
-  // 构建记录字段（按新的列顺序）
-  // 注意：数字字段转换为字符串，因为飞书表格中可能是文本类型
+  // 构建记录字段
+  // 列顺序：笔记链接、作者昵称、封面、图片2、后续图片、标题、正文、话题标签、浏览数、点赞数、收藏数、评论数、发布时间、复刻情况
   const fields: any = {
     '笔记链接': url,                     // 第1列
     '作者昵称': authorName,              // 第2列
-    '标题': title,                       // 第3列
-    '正文': content,                     // 第4列
-    // 第5-7列：封面、图片2、后续图片（下面处理）
+    // 第3-5列：封面、图片2、后续图片（下面处理）
+    '标题': title,                       // 第6列
+    '正文': content,                     // 第7列
     '话题标签': tags,                    // 第8列
-    '浏览数': String(viewCount),         // 第9列（转字符串）
-    '点赞数': String(likedCount),        // 第10列（转字符串）
-    '收藏数': String(collectedCount),    // 第11列（转字符串）
-    '评论数': String(commentCount),      // 第12列（转字符串）
-    '发布时间': String(publishTime)      // 第13列（转字符串）
-    // 第14列：去复刻按钮（飞书表格中配置按钮字段）
+    '浏览数': String(viewCount),         // 第9列
+    '点赞数': String(likedCount),        // 第10列
+    '收藏数': String(collectedCount),    // 第11列
+    '评论数': String(commentCount),      // 第12列
+    '发布时间': String(publishTime)      // 第13列
+    // 第14列：复刻情况（按钮字段，需手动在飞书表格中创建）
   }
 
   // 将图片保存到附件字段（使用 file_token，跳过失败的图片）
@@ -374,6 +374,17 @@ async function saveToFeishu(
 
   const totalSaved = [fileTokens[0], fileTokens[1], ...fileTokens.slice(2)].filter(Boolean).length
   console.log('[快捷保存-飞书] 共保存', totalSaved, '个图片到附件字段')
+
+  // 打印所有字段数据用于调试
+  console.log('[快捷保存-飞书] 字段数据:')
+  console.log('  - 笔记链接:', url)
+  console.log('  - 作者昵称:', authorName)
+  console.log('  - 标题:', title)
+  console.log('  - 正文长度:', content?.length || 0, '字符')
+  console.log('  - 话题标签:', tags)
+  console.log('  - 封面:', fileTokens[0] ? '✓' : '✗')
+  console.log('  - 图片2:', fileTokens[1] ? '✓' : '✗')
+  console.log('  - 后续图片:', fileTokens.length > 2 ? `${fileTokens.slice(2).filter(Boolean).length}张` : '无')
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
