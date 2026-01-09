@@ -129,16 +129,27 @@ async function parseXiaohongshu(url: string) {
   // 提取话题标签
   const tags = noteData.hash_tag?.map((tag: any) => `#${tag.name}#`).join(' ') || ''
 
-  // 提取正文并清理话题标签
+  // 提取正文并清理末尾的话题标签
   const rawContent = noteData.desc || ''
   let content = rawContent
-  // 移除 #话题名[话题]# 格式的话题标签
-  content = content.replace(/#[^#]+\[话题\]#/g, '')
-  // 移除 #话题名# 格式的话题标签（如果有）
-  content = content.replace(/#[^#\s]+#/g, '')
-  // 移除 @提及
-  content = content.replace(/@[^\s]+/g, '')
-  // 清理多余的空格和换行
+
+  // 策略：小红书格式 = 正文内容 + 末尾话题标签区域
+  // 末尾话题标签的特征：#xxx[话题]#、@xxx（后面是空格/标签/结尾）
+  // 正文中的#@特征：#1好物、@朋友家（后面紧跟文字）
+
+  // 使用更精确的匹配：只删除末尾连续的话题标签块
+  // 1. 先删除所有 #xxx[话题]# 格式（用空格替换以保持结构）
+  content = content.replace(/#[^#]+\[话题\]#/g, ' ')
+
+  // 2. 删除末尾的 @用户名 和 #话题# 格式（确保这些在末尾）
+  // 从末尾开始匹配：连续的空格 + @word 或 #word# 或 #word
+  // 但要确保这些是"独立的标签"，不是正文的一部分
+
+  // 更简单的方法：从后往前删除明显的末尾标签
+  // 末尾标签模式：(空格) + (@单词|#单词#) + (可能重复)
+  content = content.replace(/(\s+[@#]\S+)+\s*$/g, '')
+
+  // 清理多余的空格
   content = content.replace(/\s+/g, ' ').trim()
 
   console.log('[快捷保存-解析] 原始正文:', rawContent)
