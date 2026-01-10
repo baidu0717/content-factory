@@ -154,6 +154,7 @@ export default function Sidebar() {
                   <Link
                     href={item.href === '/image-generate' ? `${item.href}?history=true` : item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
+                    prefetch={false}
                     className={`
                     flex items-center space-x-3 px-4 py-3 rounded-lg transition-all
                     ${isActive
