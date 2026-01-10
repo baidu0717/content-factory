@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Link as LinkIcon,
@@ -57,6 +57,10 @@ function URLParamsLoader({
     const content = searchParams.get('content')
     const tags = searchParams.get('tags')
 
+    console.log('[URL参数] title:', title)
+    console.log('[URL参数] content:', content)
+    console.log('[URL参数] tags:', tags)
+
     if (title && content) {
       console.log('[小红书复刻] 从URL参数加载笔记数据')
 
@@ -66,6 +70,8 @@ function URLParamsLoader({
         tags: tags || '',
         images: []
       })
+    } else {
+      console.log('[URL参数] 数据不完整，未加载')
     }
   }, [searchParams, onLoad])
 
@@ -88,13 +94,14 @@ function RewritePageContent() {
   const [editableTags, setEditableTags] = useState('')
 
   // ===== 从URL参数预填充数据 =====
-  const handleURLParamsLoad = (note: OriginalNote) => {
+  const handleURLParamsLoad = useCallback((note: OriginalNote) => {
+    console.log('[复刻页面] 收到URL参数数据:', note)
     setOriginalNote(note)
     setEditableTitle(note.title)
     setEditableContent(note.content)
     setEditableTags(note.tags)
     setPageState('parsed')
-  }
+  }, [])
 
   // 提示词设置
   const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为更吸引人的新标题，保持原意但使用不同的表达方式，避免抄袭：')
@@ -113,6 +120,56 @@ function RewritePageContent() {
 
   // 复制状态
   const [copied, setCopied] = useState(false)
+
+  // ===== 一键改写标题 =====
+  const handleRewriteTitle = useCallback(async () => {
+    setProcessingStep('正在改写标题...')
+    try {
+      const response = await fetch('/api/xiaohongshu/rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editableTitle,
+          content: editableContent,
+          titlePrompt: titlePrompt,
+          contentPrompt: contentPrompt
+        })
+      })
+      const result = await response.json()
+      if (result.success) {
+        setEditableTitle(result.data.newTitle)
+      }
+    } catch (error) {
+      console.error('改写标题失败:', error)
+    } finally {
+      setProcessingStep('')
+    }
+  }, [editableTitle, editableContent, titlePrompt, contentPrompt])
+
+  // ===== 一键改写正文 =====
+  const handleRewriteContent = useCallback(async () => {
+    setProcessingStep('正在改写正文...')
+    try {
+      const response = await fetch('/api/xiaohongshu/rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editableTitle,
+          content: editableContent,
+          titlePrompt: titlePrompt,
+          contentPrompt: contentPrompt
+        })
+      })
+      const result = await response.json()
+      if (result.success) {
+        setEditableContent(result.data.newContent)
+      }
+    } catch (error) {
+      console.error('改写正文失败:', error)
+    } finally {
+      setProcessingStep('')
+    }
+  }, [editableTitle, editableContent, titlePrompt, contentPrompt])
 
   // ===== 解析小红书链接 =====
   const handleParse = async () => {
@@ -580,28 +637,9 @@ function RewritePageContent() {
                           标题
                         </label>
                         <button
-                          onClick={async () => {
-                            setProcessingStep('正在改写标题...')
-                            try {
-                              const response = await fetch('/api/xiaohongshu/rewrite', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  title: editableTitle,
-                                  content: editableContent,
-                                  titlePrompt: titlePrompt,
-                                  contentPrompt: contentPrompt
-                                })
-                              })
-                              const result = await response.json()
-                              if (result.success) {
-                                setEditableTitle(result.data.newTitle)
-                              }
-                            } catch (error) {
-                              console.error('改写标题失败:', error)
-                            }
-                          }}
-                          className="px-3 py-1 text-xs bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 flex items-center"
+                          onClick={handleRewriteTitle}
+                          disabled={!editableTitle || processingStep !== ''}
+                          className="px-3 py-1 text-xs bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                         >
                           <Wand2 className="w-3 h-3 mr-1" />
                           一键改写
@@ -624,28 +662,9 @@ function RewritePageContent() {
                           正文
                         </label>
                         <button
-                          onClick={async () => {
-                            setProcessingStep('正在改写正文...')
-                            try {
-                              const response = await fetch('/api/xiaohongshu/rewrite', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  title: editableTitle,
-                                  content: editableContent,
-                                  titlePrompt: titlePrompt,
-                                  contentPrompt: contentPrompt
-                                })
-                              })
-                              const result = await response.json()
-                              if (result.success) {
-                                setEditableContent(result.data.newContent)
-                              }
-                            } catch (error) {
-                              console.error('改写正文失败:', error)
-                            }
-                          }}
-                          className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center"
+                          onClick={handleRewriteContent}
+                          disabled={!editableContent || processingStep !== ''}
+                          className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                         >
                           <Wand2 className="w-3 h-3 mr-1" />
                           一键改写
