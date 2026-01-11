@@ -93,6 +93,12 @@ function RewritePageContent() {
   const [editableContent, setEditableContent] = useState('')
   const [editableTags, setEditableTags] = useState('')
 
+  // 监听 editableContent 变化
+  useEffect(() => {
+    console.log('[状态监听] editableContent 已更新，新长度:', editableContent?.length)
+    console.log('[状态监听] editableContent 前100字:', editableContent?.substring(0, 100))
+  }, [editableContent])
+
   // ===== 从URL参数预填充数据 =====
   const handleURLParamsLoad = useCallback((note: OriginalNote) => {
     console.log('[复刻页面] 收到URL参数数据:', note)
@@ -104,8 +110,8 @@ function RewritePageContent() {
   }, [])
 
   // 提示词设置
-  const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为更吸引人的新标题，保持原意但使用不同的表达方式，避免抄袭：')
-  const [contentPrompt, setContentPrompt] = useState('请将以下小红书正文改写为全新的内容，保持核心观点但使用完全不同的表达方式、案例和结构，确保原创性：')
+  const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为更吸引人的新标题，保持原意但使用不同的表达方式。直接输出改写后的标题，不要有任何解释：')
+  const [contentPrompt, setContentPrompt] = useState('请将以下小红书正文改写为全新的内容，保持核心观点但使用完全不同的表达方式、案例和结构。直接输出改写后的完整正文，不要有任何策略说明或解释，只输出正文内容本身：')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
   const [imageStyle, setImageStyle] = useState('original')
 
@@ -148,6 +154,11 @@ function RewritePageContent() {
 
   // ===== 一键改写正文 =====
   const handleRewriteContent = useCallback(async () => {
+    console.log('[一键改写] 开始改写正文')
+    console.log('[一键改写] 当前标题:', editableTitle?.substring(0, 50))
+    console.log('[一键改写] 当前正文长度:', editableContent?.length)
+    console.log('[一键改写] 当前正文前100字:', editableContent?.substring(0, 100))
+
     setProcessingStep('正在改写正文...')
     try {
       const response = await fetch('/api/xiaohongshu/rewrite', {
@@ -161,8 +172,15 @@ function RewritePageContent() {
         })
       })
       const result = await response.json()
+      console.log('[一键改写] API返回结果:', result)
       if (result.success) {
+        console.log('[一键改写] 新正文长度:', result.data.newContent?.length)
+        console.log('[一键改写] 新正文前200字:', result.data.newContent?.substring(0, 200))
+        console.log('[一键改写] 准备更新状态...')
         setEditableContent(result.data.newContent)
+        console.log('[一键改写] 状态已更新')
+      } else {
+        console.error('[一键改写] 改写失败:', result.error)
       }
     } catch (error) {
       console.error('改写正文失败:', error)
@@ -673,8 +691,8 @@ function RewritePageContent() {
                       <textarea
                         value={editableContent}
                         onChange={(e) => setEditableContent(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                        rows={8}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
+                        rows={15}
                         placeholder="输入正文..."
                       />
                     </div>
