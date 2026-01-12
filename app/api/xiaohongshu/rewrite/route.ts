@@ -14,7 +14,7 @@ if (HTTPS_PROXY) {
 
 // Gemini API 配置
 const GEMINI_TEXT_API_KEY = process.env.GEMINI_TEXT_API_KEY || ''
-const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'
+const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-2.0-flash-exp'
 
 // 初始化 Gemini 客户端
 const geminiClient = new GoogleGenAI({
@@ -33,7 +33,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 检查 API Key
+    if (!GEMINI_TEXT_API_KEY) {
+      console.error('[内容改写] 错误: GEMINI_TEXT_API_KEY 未配置')
+      return NextResponse.json(
+        { success: false, error: 'API配置错误，请联系管理员' },
+        { status: 500 }
+      )
+    }
+
     console.log('[内容改写] 开始改写')
+    console.log('[内容改写] 使用模型:', GEMINI_TEXT_MODEL)
     console.log('[内容改写] 原标题:', title)
     console.log('[内容改写] 原正文长度:', content?.length || 0)
 
@@ -68,6 +78,10 @@ export async function POST(request: NextRequest) {
         console.log('[内容改写] 新标题:', newTitle)
       } catch (error) {
         console.error('[内容改写] 标题改写失败:', error)
+        if (error instanceof Error) {
+          console.error('[内容改写] 错误详情:', error.message)
+          console.error('[内容改写] 错误堆栈:', error.stack)
+        }
         // 标题改写失败不影响继续处理正文
       }
     }
@@ -100,7 +114,11 @@ export async function POST(request: NextRequest) {
         console.log('[内容改写] 新正文长度:', newContent.length)
       } catch (error) {
         console.error('[内容改写] 正文改写失败:', error)
-        throw new Error('正文改写失败，请重试')
+        if (error instanceof Error) {
+          console.error('[内容改写] 错误详情:', error.message)
+          console.error('[内容改写] 错误堆栈:', error.stack)
+        }
+        throw new Error(`正文改写失败: ${error instanceof Error ? error.message : '未知错误'}`)
       }
     }
 
