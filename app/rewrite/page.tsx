@@ -678,6 +678,9 @@ function RewritePageContent() {
                         <label className="text-sm font-medium text-gray-700 flex items-center">
                           <AlignLeft className="w-4 h-4 mr-1 text-blue-600" />
                           正文
+                          <span className="ml-2 text-xs text-gray-500">
+                            ({editableContent?.length || 0} 字)
+                          </span>
                         </label>
                         <button
                           onClick={handleRewriteContent}
@@ -691,10 +694,13 @@ function RewritePageContent() {
                       <textarea
                         value={editableContent}
                         onChange={(e) => setEditableContent(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
-                        rows={15}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[400px] max-h-[800px]"
+                        rows={20}
                         placeholder="输入正文..."
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        💡 提示：编辑框支持手动调整高度，拖拽右下角可调整
+                      </p>
                     </div>
 
                     {/* 话题标签编辑框 */}

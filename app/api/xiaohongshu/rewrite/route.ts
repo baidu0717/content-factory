@@ -14,7 +14,7 @@ if (HTTPS_PROXY) {
 
 // Gemini API 配置
 const GEMINI_TEXT_API_KEY = process.env.GEMINI_TEXT_API_KEY || ''
-const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-2.0-flash-exp'
+const GEMINI_TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview'
 
 // 初始化 Gemini 客户端
 const geminiClient = new GoogleGenAI({
