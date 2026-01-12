@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import GlassCard from '@/components/GlassCard'
+import XiaohongshuPreview from '@/components/XiaohongshuPreview'
 
 // 状态类型定义
 type PageState = 'empty' | 'parsed' | 'processing' | 'completed'
@@ -42,6 +43,16 @@ interface RewriteResult {
   newTitle: string
   newContent: string
   newImages: string[]
+}
+
+// 历史记录版本
+interface HistoryVersion {
+  id: string
+  timestamp: number
+  title: string
+  content: string
+  tags: string
+  type: 'initial' | 'ai-rewrite' | 'manual-edit'
 }
 
 // URL参数加载组件（需要包裹在Suspense中）
@@ -93,11 +104,72 @@ function RewritePageContent() {
   const [editableContent, setEditableContent] = useState('')
   const [editableTags, setEditableTags] = useState('')
 
+  // 本地图片上传
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
+
+  // 小红书预览
+  const [showPreview, setShowPreview] = useState(false)
+
+  // 历史记录
+  const [history, setHistory] = useState<HistoryVersion[]>([])
+  const [currentVersionId, setCurrentVersionId] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+
   // 监听 editableContent 变化
   useEffect(() => {
     console.log('[状态监听] editableContent 已更新，新长度:', editableContent?.length)
     console.log('[状态监听] editableContent 前100字:', editableContent?.substring(0, 100))
   }, [editableContent])
+
+  // ===== 创建历史版本 =====
+  const createHistoryVersion = useCallback((title: string, content: string, tags: string, type: HistoryVersion['type']) => {
+    const newVersion: HistoryVersion = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+      title,
+      content,
+      tags,
+      type
+    }
+    setHistory(prev => [newVersion, ...prev])
+    setCurrentVersionId(newVersion.id)
+
+    // 保存到 localStorage
+    try {
+      const updatedHistory = [newVersion, ...history]
+      localStorage.setItem('rewrite-history', JSON.stringify(updatedHistory.slice(0, 50))) // 最多保留50个版本
+      console.log('[历史记录] 已保存版本:', type, '总数:', updatedHistory.length)
+    } catch (error) {
+      console.error('[历史记录] 保存失败:', error)
+    }
+
+    return newVersion.id
+  }, [history])
+
+  // ===== 从localStorage加载历史记录 =====
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('rewrite-history')
+      if (saved) {
+        const parsed = JSON.parse(saved) as HistoryVersion[]
+        setHistory(parsed)
+        console.log('[历史记录] 已加载', parsed.length, '个历史版本')
+      }
+    } catch (error) {
+      console.error('[历史记录] 加载失败:', error)
+    }
+  }, [])
+
+  // ===== 恢复历史版本 =====
+  const restoreVersion = useCallback((version: HistoryVersion) => {
+    setEditableTitle(version.title)
+    setEditableContent(version.content)
+    setEditableTags(version.tags)
+    setCurrentVersionId(version.id)
+    setShowHistory(false)
+    console.log('[历史记录] 已恢复版本:', version.id)
+  }, [])
 
   // ===== 从URL参数预填充数据 =====
   const handleURLParamsLoad = useCallback((note: OriginalNote) => {
@@ -107,6 +179,60 @@ function RewritePageContent() {
     setEditableContent(note.content)
     setEditableTags(note.tags)
     setPageState('parsed')
+
+    // 创建初始历史版本
+    createHistoryVersion(note.title, note.content, note.tags, 'initial')
+  }, [createHistoryVersion])
+
+  // ===== 处理图片上传 =====
+  const handleFileUpload = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return
+
+    const filesArray = Array.from(files)
+    const validFiles = filesArray.filter(file => file.type.startsWith('image/'))
+
+    if (validFiles.length === 0) {
+      alert('请选择有效的图片文件')
+      return
+    }
+
+    // 限制最多18张
+    const totalFiles = uploadedFiles.length + validFiles.length
+    if (totalFiles > 18) {
+      alert('最多只能上传18张图片')
+      return
+    }
+
+    // 添加新文件
+    const newFiles = [...uploadedFiles, ...validFiles]
+    setUploadedFiles(newFiles)
+
+    // 生成预览URL
+    const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file))
+    setPreviewUrls([...previewUrls, ...newPreviewUrls])
+
+    console.log('[图片上传] 已上传', newFiles.length, '张图片')
+  }, [uploadedFiles, previewUrls])
+
+  // ===== 删除图片 =====
+  const handleRemoveImage = useCallback((index: number) => {
+    const newFiles = uploadedFiles.filter((_, i) => i !== index)
+    const newPreviewUrls = previewUrls.filter((_, i) => i !== index)
+
+    // 释放 URL 对象
+    URL.revokeObjectURL(previewUrls[index])
+
+    setUploadedFiles(newFiles)
+    setPreviewUrls(newPreviewUrls)
+
+    console.log('[图片删除] 删除第', index + 1, '张图片，剩余', newFiles.length, '张')
+  }, [uploadedFiles, previewUrls])
+
+  // ===== 清理 URL 对象 =====
+  useEffect(() => {
+    return () => {
+      previewUrls.forEach(url => URL.revokeObjectURL(url))
+    }
   }, [])
 
   // 提示词设置
@@ -178,16 +304,22 @@ function RewritePageContent() {
         console.log('[一键改写] 新正文前200字:', result.data.newContent?.substring(0, 200))
         console.log('[一键改写] 准备更新状态...')
         setEditableContent(result.data.newContent)
+
+        // 创建历史版本
+        createHistoryVersion(editableTitle, result.data.newContent, editableTags, 'ai-rewrite')
+
         console.log('[一键改写] 状态已更新')
       } else {
         console.error('[一键改写] 改写失败:', result.error)
+        alert(`改写失败: ${result.error}`)
       }
     } catch (error) {
       console.error('改写正文失败:', error)
+      alert('改写失败，请重试')
     } finally {
       setProcessingStep('')
     }
-  }, [editableTitle, editableContent, titlePrompt, contentPrompt])
+  }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, createHistoryVersion])
 
   // ===== 解析小红书链接 =====
   const handleParse = async () => {
@@ -394,53 +526,58 @@ function RewritePageContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 左侧：输入和设置区域 */}
         <div className="lg:col-span-1 space-y-6">
-          {/* 链接输入 */}
-          <GlassCard className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <LinkIcon className="w-5 h-5 mr-2 text-blue-500" />
-              链接输入
-            </h2>
-            <div className="space-y-3">
-              <input
-                type="text"
-                value={xiaohongshuUrl}
-                onChange={(e) => setXiaohongshuUrl(e.target.value)}
-                placeholder="请输入小红书链接"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                disabled={pageState === 'processing'}
-              />
-              {parseError && (
-                <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600">{parseError}</p>
+          {/* 图片上传 */}
+          {pageState !== 'empty' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <GlassCard className="p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <ImageIcon className="w-5 h-5 mr-2 text-purple-500" />
+                  图片上传
+                  <span className="ml-auto text-sm text-gray-500">
+                    {uploadedFiles.length}/18
+                  </span>
+                </h2>
+                <div className="space-y-3">
+                  <label className="w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 transition-colors cursor-pointer flex flex-col items-center justify-center bg-gray-50 hover:bg-purple-50">
+                    <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-600">点击或拖拽上传图片</span>
+                    <span className="text-xs text-gray-400 mt-1">最多18张，支持JPG、PNG</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={(e) => handleFileUpload(e.target.files)}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {/* 图片预览 */}
+                  {previewUrls.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 mt-4">
+                      {previewUrls.map((url, index) => (
+                        <div key={index} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
+                          <img src={url} alt={`预览 ${index + 1}`} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => handleRemoveImage(index)}
+                            className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs py-1 text-center">
+                            {index + 1}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-              <button
-                onClick={handleParse}
-                disabled={isParsing || pageState === 'processing'}
-                className="w-full px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
-              >
-                {isParsing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    解析中...
-                  </>
-                ) : (
-                  <>
-                    <LinkIcon className="w-4 h-4 mr-2" />
-                    解析
-                  </>
-                )}
-              </button>
-              {pageState !== 'empty' && (
-                <button
-                  onClick={handleReset}
-                  className="w-full px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  重新输入
-                </button>
-              )}
-            </div>
-          </GlassCard>
+              </GlassCard>
+            </motion.div>
+          )}
 
           {/* 改写设置 */}
           {pageState !== 'empty' && (
@@ -490,128 +627,6 @@ function RewritePageContent() {
             </motion.div>
           )}
 
-          {/* 图片复刻设置 */}
-          {pageState !== 'empty' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-            >
-              <GlassCard className="p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <ImageIcon className="w-5 h-5 mr-2 text-green-500" />
-                  图片复刻设置
-                </h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-                      <Palette className="w-4 h-4 mr-1" />
-                      图生图提示词
-                    </label>
-                    <textarea
-                      value={imagePrompt}
-                      onChange={(e) => setImagePrompt(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
-                      rows={3}
-                      disabled={pageState === 'processing'}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      复刻风格
-                    </label>
-                    <div className="space-y-2">
-                      {[
-                        { value: 'original', label: '保持原风格' },
-                        { value: 'cartoon', label: '卡通风格' },
-                        { value: 'realistic', label: '写实风格' },
-                        { value: 'sketch', label: '手绘风格' }
-                      ].map((style) => (
-                        <label key={style.value} className="flex items-center p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="imageStyle"
-                            value={style.value}
-                            checked={imageStyle === style.value}
-                            onChange={(e) => setImageStyle(e.target.value)}
-                            className="mr-2"
-                            disabled={pageState === 'processing'}
-                          />
-                          <span className="text-sm text-gray-700">{style.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 云旅游实景模式 */}
-                  <div className="border-t pt-4">
-                    <label className="flex items-center p-3 rounded-lg hover:bg-gray-50 cursor-pointer border border-green-200 bg-green-50">
-                      <input
-                        type="checkbox"
-                        checked={isTravelMode}
-                        onChange={(e) => setIsTravelMode(e.target.checked)}
-                        className="mr-3 w-4 h-4 text-green-600"
-                        disabled={pageState === 'processing'}
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-medium text-gray-900">开启"云旅游"实景模式</span>
-                        <p className="text-xs text-gray-500 mt-1">
-                          将提示词视为地理位置，AI 会根据当前时间推演真实环境
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-
-                  {/* 图片宽高比 */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      图片宽高比
-                    </label>
-                    <div className="grid grid-cols-5 gap-2">
-                      {[
-                        { value: '1:1', label: '1:1' },
-                        { value: '3:4', label: '3:4' },
-                        { value: '4:3', label: '4:3' },
-                        { value: '16:9', label: '16:9' },
-                        { value: '9:16', label: '9:16' }
-                      ].map((ratio) => (
-                        <button
-                          key={ratio.value}
-                          onClick={() => setAspectRatio(ratio.value as any)}
-                          className={`px-3 py-2 text-xs rounded-lg border transition-all ${
-                            aspectRatio === ratio.value
-                              ? 'bg-green-500 text-white border-green-500'
-                              : 'bg-white text-gray-700 border-gray-300 hover:border-green-300'
-                          }`}
-                          disabled={pageState === 'processing'}
-                        >
-                          {ratio.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </GlassCard>
-            </motion.div>
-          )}
-
-          {/* 开始复刻按钮 */}
-          {pageState === 'parsed' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.2 }}
-            >
-              <button
-                onClick={handleRewrite}
-                className="w-full px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:from-pink-600 hover:to-purple-700 flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
-              >
-                <Wand2 className="w-5 h-5 mr-2" />
-                开始复刻
-              </button>
-            </motion.div>
-          )}
         </div>
 
         {/* 右侧：预览区域 */}
@@ -682,15 +697,69 @@ function RewritePageContent() {
                             ({editableContent?.length || 0} 字)
                           </span>
                         </label>
-                        <button
-                          onClick={handleRewriteContent}
-                          disabled={!editableContent || processingStep !== ''}
-                          className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                        >
-                          <Wand2 className="w-3 h-3 mr-1" />
-                          一键改写
-                        </button>
+                        <div className="flex gap-2">
+                          {history.length > 0 && (
+                            <button
+                              onClick={() => setShowHistory(!showHistory)}
+                              className="px-3 py-1 text-xs bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 flex items-center"
+                            >
+                              <RefreshCw className="w-3 h-3 mr-1" />
+                              历史记录 ({history.length})
+                            </button>
+                          )}
+                          <button
+                            onClick={handleRewriteContent}
+                            disabled={!editableContent || processingStep !== ''}
+                            className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                          >
+                            <Wand2 className="w-3 h-3 mr-1" />
+                            一键改写
+                          </button>
+                        </div>
                       </div>
+
+                      {/* 历史记录面板 */}
+                      {showHistory && history.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded-lg"
+                        >
+                          <div className="text-xs font-medium text-gray-700 mb-2">历史版本</div>
+                          <div className="space-y-1 max-h-40 overflow-y-auto">
+                            {history.map((version, index) => (
+                              <button
+                                key={version.id}
+                                onClick={() => restoreVersion(version)}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all ${
+                                  version.id === currentVersionId
+                                    ? 'bg-purple-200 text-purple-900'
+                                    : 'bg-white hover:bg-purple-100 text-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium">
+                                    {version.type === 'initial' && '📝 初始版本'}
+                                    {version.type === 'ai-rewrite' && '🤖 AI改写'}
+                                    {version.type === 'manual-edit' && '✏️ 手动编辑'}
+                                  </span>
+                                  <span className="text-gray-500">
+                                    {new Date(version.timestamp).toLocaleTimeString('zh-CN', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="text-gray-600 truncate mt-1">
+                                  {version.content.substring(0, 50)}...
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+
                       <textarea
                         value={editableContent}
                         onChange={(e) => setEditableContent(e.target.value)}
@@ -737,10 +806,23 @@ function RewritePageContent() {
                     </div>
                   )}
 
-                  <div className="pt-4 border-t border-gray-200">
-                    <p className="text-sm text-gray-500 text-center">
-                      ✨ 编辑好内容后，点击"开始复刻"按钮生成新图片
-                    </p>
+                  {/* 预览和发布按钮 */}
+                  <div className="pt-4 border-t border-gray-200 flex gap-3">
+                    <button
+                      onClick={() => setShowPreview(true)}
+                      disabled={!editableTitle || !editableContent || previewUrls.length === 0}
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg hover:from-blue-600 hover:to-cyan-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
+                    >
+                      <ExternalLink className="w-5 h-5 mr-2" />
+                      预览笔记
+                    </button>
+                    <button
+                      disabled={!editableTitle || !editableContent || previewUrls.length === 0}
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
+                    >
+                      <Send className="w-5 h-5 mr-2" />
+                      发布笔记
+                    </button>
                   </div>
                 </div>
               </motion.div>
@@ -892,6 +974,16 @@ function RewritePageContent() {
           </GlassCard>
         </div>
       </div>
+
+      {/* 小红书预览弹窗 */}
+      <XiaohongshuPreview
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        title={editableTitle}
+        content={editableContent}
+        tags={editableTags}
+        images={previewUrls}
+      />
     </div>
   )
 }
