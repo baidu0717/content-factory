@@ -116,6 +116,15 @@ function RewritePageContent() {
   const [currentVersionId, setCurrentVersionId] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
 
+  // 发布状态
+  const [isPublishing, setIsPublishing] = useState(false)
+  const [publishStep, setPublishStep] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [publishResult, setPublishResult] = useState<{
+    qrCodeUrl: string
+    noteId: string
+  } | null>(null)
+
   // 监听 editableContent 变化
   useEffect(() => {
     console.log('[状态监听] editableContent 已更新，新长度:', editableContent?.length)
@@ -234,6 +243,71 @@ function RewritePageContent() {
       previewUrls.forEach(url => URL.revokeObjectURL(url))
     }
   }, [])
+
+  // ===== 发布笔记 =====
+  const handlePublish = useCallback(async () => {
+    if (!editableTitle || !editableContent || uploadedFiles.length === 0) {
+      alert('请完善标题、正文和图片')
+      return
+    }
+
+    setIsPublishing(true)
+    setPublishResult(null)
+
+    try {
+      // 步骤1：上传图片到Vercel Blob
+      setPublishStep('正在上传图片...')
+      setUploadProgress(0)
+
+      const formData = new FormData()
+      uploadedFiles.forEach(file => {
+        formData.append('images', file)
+      })
+
+      console.log('[发布] 开始上传', uploadedFiles.length, '张图片')
+
+      const uploadResponse = await fetch('/api/upload/images', {
+        method: 'POST',
+        body: formData
+      })
+
+      const uploadResult = await uploadResponse.json()
+
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error || '图片上传失败')
+      }
+
+      const imageUrls = uploadResult.data.urls
+      console.log('[发布] 图片上传完成，获得', imageUrls.length, '个URL')
+      setUploadProgress(100)
+
+      // 步骤2：调用发布API
+      setPublishStep('正在发布到小红书...')
+
+      // 先创建临时文章记录
+      const article = {
+        title: editableTitle,
+        content: editableContent,
+        tags: editableTags.split(/\s+/).filter(t => t.trim()),
+        images: imageUrls
+      }
+
+      // 调用发布API（需要先保存到数据库）
+      // TODO: 这里需要先创建文章记录，然后调用发布API
+      console.log('[发布] 准备发布文章:', article)
+
+      // 暂时直接显示成功（实际需要调用发布API）
+      alert('发布功能开发中...')
+
+    } catch (error) {
+      console.error('[发布] 发布失败:', error)
+      alert(`发布失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    } finally {
+      setIsPublishing(false)
+      setPublishStep('')
+      setUploadProgress(0)
+    }
+  }, [editableTitle, editableContent, editableTags, uploadedFiles])
 
   // 提示词设置
   const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为更吸引人的新标题，保持原意但使用不同的表达方式。直接输出改写后的标题，不要有任何解释：')
@@ -817,11 +891,21 @@ function RewritePageContent() {
                       预览笔记
                     </button>
                     <button
-                      disabled={!editableTitle || !editableContent || previewUrls.length === 0}
+                      onClick={handlePublish}
+                      disabled={!editableTitle || !editableContent || previewUrls.length === 0 || isPublishing}
                       className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
                     >
-                      <Send className="w-5 h-5 mr-2" />
-                      发布笔记
+                      {isPublishing ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          {publishStep || '发布中...'}
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-5 h-5 mr-2" />
+                          发布笔记
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
