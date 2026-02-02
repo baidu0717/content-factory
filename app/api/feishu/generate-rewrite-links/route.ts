@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getUserAccessToken } from '@/lib/feishuAuth'
+import { getUserAccessToken, getAppAccessToken } from '@/lib/feishuAuth'
 
 const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
 const APP_TOKEN = process.env.FEISHU_DEFAULT_APP_TOKEN || ''
 const TABLE_ID = process.env.FEISHU_DEFAULT_TABLE_ID || ''
-const BASE_URL = 'https://content-factory-jade-nine.vercel.app'
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://content-factory-jade-nine.vercel.app'
 
 /**
  * POST /api/feishu/generate-rewrite-links
@@ -21,8 +21,17 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 1. 获取访问令牌（使用用户级token才能读取个人表格）
-    const accessToken = await getUserAccessToken()
+    // 1. 获取访问令牌
+    // 优先尝试用户token，如果失败则使用app token（适用于应用级表格）
+    let accessToken: string
+    try {
+      accessToken = await getUserAccessToken()
+      console.log('[Token] 使用 user_access_token')
+    } catch (error) {
+      console.log('[Token] user token失败，尝试使用 app_access_token')
+      accessToken = await getAppAccessToken()
+      console.log('[Token] 使用 app_access_token')
+    }
 
     // 2. 获取所有记录
     console.log('📋 获取表格记录...')
