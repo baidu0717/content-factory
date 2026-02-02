@@ -68,14 +68,16 @@ export async function POST(request: NextRequest) {
           contents: titleContents,
           config: {
             temperature: 0.8,
-            maxOutputTokens: 200
+            maxOutputTokens: 500  // 增加到500，支持更长的标题
           }
         })
 
         // 提取生成的文本
-        const generatedText = titleResponse.candidates?.[0]?.content?.parts?.[0]?.text
+        const titleCandidate = titleResponse.candidates?.[0]
+        const generatedText = titleCandidate?.content?.parts?.[0]?.text
         newTitle = generatedText?.trim() || title
         console.log('[内容改写] 新标题:', newTitle)
+        console.log('[内容改写] 标题完成原因:', titleCandidate?.finishReason)
       } catch (error) {
         console.error('[内容改写] 标题改写失败:', error)
         if (error instanceof Error) {
@@ -104,14 +106,21 @@ export async function POST(request: NextRequest) {
           contents: contentContents,
           config: {
             temperature: 0.8,
-            maxOutputTokens: 2000
+            maxOutputTokens: 4096  // 增加到4096，支持更长的内容
           }
         })
 
         // 提取生成的文本
-        const generatedText = contentResponse.candidates?.[0]?.content?.parts?.[0]?.text
+        const candidate = contentResponse.candidates?.[0]
+        const generatedText = candidate?.content?.parts?.[0]?.text
         newContent = generatedText?.trim() || content
+
+        // 调试：检查是否被截断
         console.log('[内容改写] 新正文长度:', newContent.length)
+        console.log('[内容改写] 完成原因:', candidate?.finishReason)
+        if (candidate?.finishReason === 'MAX_TOKENS') {
+          console.warn('[内容改写] ⚠️ 内容被截断：达到最大token限制')
+        }
       } catch (error) {
         console.error('[内容改写] 正文改写失败:', error)
         if (error instanceof Error) {

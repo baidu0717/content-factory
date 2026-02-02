@@ -360,14 +360,14 @@ function RewritePageContent() {
     }
   }, [editableTitle, editableContent, titlePrompt, contentPrompt])
 
-  // ===== 一键改写正文 =====
-  const handleRewriteContent = useCallback(async () => {
-    console.log('[一键改写] 开始改写正文')
+  // ===== 一键改写全部（标题+正文） =====
+  const handleRewriteAll = useCallback(async () => {
+    console.log('[一键改写] 开始改写标题和正文')
     console.log('[一键改写] 当前标题:', editableTitle?.substring(0, 50))
     console.log('[一键改写] 当前正文长度:', editableContent?.length)
     console.log('[一键改写] 当前正文前100字:', editableContent?.substring(0, 100))
 
-    setProcessingStep('正在改写正文...')
+    setProcessingStep('正在改写标题和正文...')
     try {
       const response = await fetch('/api/xiaohongshu/rewrite', {
         method: 'POST',
@@ -382,17 +382,59 @@ function RewritePageContent() {
       const result = await response.json()
       console.log('[一键改写] API返回结果:', result)
       if (result.success) {
+        console.log('[一键改写] 新标题:', result.data.newTitle)
         console.log('[一键改写] 新正文长度:', result.data.newContent?.length)
         console.log('[一键改写] 新正文前200字:', result.data.newContent?.substring(0, 200))
         console.log('[一键改写] 准备更新状态...')
+
+        // 同时更新标题和正文
+        setEditableTitle(result.data.newTitle)
         setEditableContent(result.data.newContent)
 
-        // 创建历史版本
-        createHistoryVersion(editableTitle, result.data.newContent, editableTags, 'ai-rewrite')
+        // 创建历史版本（使用新标题）
+        createHistoryVersion(result.data.newTitle, result.data.newContent, editableTags, 'ai-rewrite')
 
         console.log('[一键改写] 状态已更新')
       } else {
         console.error('[一键改写] 改写失败:', result.error)
+        alert(`改写失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('一键改写失败:', error)
+      alert('改写失败，请重试')
+    } finally {
+      setProcessingStep('')
+    }
+  }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, createHistoryVersion])
+
+  // ===== 一键改写正文 =====
+  const handleRewriteContent = useCallback(async () => {
+    console.log('[改写正文] 开始改写正文')
+    console.log('[改写正文] 当前正文长度:', editableContent?.length)
+
+    setProcessingStep('正在改写正文...')
+    try {
+      const response = await fetch('/api/xiaohongshu/rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editableTitle,
+          content: editableContent,
+          contentPrompt: contentPrompt  // 只传正文提示词
+        })
+      })
+      const result = await response.json()
+      console.log('[改写正文] API返回结果:', result)
+      if (result.success) {
+        console.log('[改写正文] 新正文长度:', result.data.newContent?.length)
+        setEditableContent(result.data.newContent)
+
+        // 创建历史版本（标题不变）
+        createHistoryVersion(editableTitle, result.data.newContent, editableTags, 'ai-rewrite')
+
+        console.log('[改写正文] 状态已更新')
+      } else {
+        console.error('[改写正文] 改写失败:', result.error)
         alert(`改写失败: ${result.error}`)
       }
     } catch (error) {
@@ -401,7 +443,7 @@ function RewritePageContent() {
     } finally {
       setProcessingStep('')
     }
-  }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, createHistoryVersion])
+  }, [editableTitle, editableContent, editableTags, contentPrompt, createHistoryVersion])
 
   // ===== 解析小红书链接 =====
   const handleParse = async () => {
@@ -742,6 +784,18 @@ function RewritePageContent() {
                 </div>
 
                 <div className="space-y-6">
+                  {/* 一键改写全部按钮 */}
+                  <div className="flex justify-center">
+                    <button
+                      onClick={handleRewriteAll}
+                      disabled={!editableTitle || !editableContent || processingStep !== ''}
+                      className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:from-pink-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-lg font-medium"
+                    >
+                      <Wand2 className="w-4 h-4 mr-2" />
+                      一键改写全部
+                    </button>
+                  </div>
+
                   {/* 可编辑的内容区域 */}
                   <div className="space-y-4">
                     {/* 标题编辑框 */}
@@ -757,7 +811,7 @@ function RewritePageContent() {
                           className="px-3 py-1 text-xs bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                         >
                           <Wand2 className="w-3 h-3 mr-1" />
-                          一键改写
+                          改写标题
                         </button>
                       </div>
                       <textarea
@@ -795,7 +849,7 @@ function RewritePageContent() {
                             className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                           >
                             <Wand2 className="w-3 h-3 mr-1" />
-                            一键改写
+                            改写正文
                           </button>
                         </div>
                       </div>
