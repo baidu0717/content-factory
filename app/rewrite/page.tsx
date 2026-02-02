@@ -62,8 +62,15 @@ function URLParamsLoader({
   onLoad: (note: OriginalNote) => void
 }) {
   const searchParams = useSearchParams()
+  const loadedRef = React.useRef(false)
 
   useEffect(() => {
+    // 防止重复加载
+    if (loadedRef.current) {
+      console.log('[URL参数] 已经加载过，跳过')
+      return
+    }
+
     const title = searchParams.get('title')
     const content = searchParams.get('content')
     const tags = searchParams.get('tags')
@@ -74,6 +81,7 @@ function URLParamsLoader({
 
     if (title && content) {
       console.log('[小红书复刻] 从URL参数加载笔记数据')
+      loadedRef.current = true
 
       onLoad({
         title,
