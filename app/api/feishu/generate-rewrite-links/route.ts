@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAppAccessToken } from '@/lib/feishuAuth'
+import { getUserAccessToken } from '@/lib/feishuAuth'
 
 const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
 const APP_TOKEN = process.env.FEISHU_DEFAULT_APP_TOKEN || ''
@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 1. 获取访问令牌
-    const accessToken = await getAppAccessToken()
+    // 1. 获取访问令牌（使用用户级token才能读取个人表格）
+    const accessToken = await getUserAccessToken()
 
     // 2. 获取所有记录
     console.log('📋 获取表格记录...')
@@ -71,12 +71,13 @@ export async function POST(request: NextRequest) {
     const titleFieldId = fieldMap['标题']
     const contentFieldId = fieldMap['正文']
     const tagsFieldId = fieldMap['话题标签']
-    const linkFieldId = fieldMap['复刻链接']
+    // 支持两种字段名：去复刻 或 复刻链接
+    const linkFieldId = fieldMap['去复刻'] || fieldMap['复刻链接']
 
     if (!titleFieldId || !contentFieldId || !tagsFieldId || !linkFieldId) {
       return NextResponse.json({
         success: false,
-        error: '表格中缺少必要字段：标题、正文、话题标签、复刻链接',
+        error: '表格中缺少必要字段：标题、正文、话题标签、去复刻（或复刻链接）',
         found_fields: Object.keys(fieldMap),
       }, { status: 400 })
     }
@@ -96,9 +97,16 @@ export async function POST(request: NextRequest) {
         const content = fields[contentFieldId] || ''
         const tags = fields[tagsFieldId] || ''
 
+        // 调试：打印第一条记录的字段信息
+        if (successCount === 0 && skipCount === 0) {
+          console.log('[调试] 第一条记录字段ID:', Object.keys(fields))
+          console.log('[调试] 标题字段ID:', titleFieldId, '值:', title)
+          console.log('[调试] 正文字段ID:', contentFieldId, '值:', content ? content.substring(0, 50) : '空')
+        }
+
         // 如果标题或正文为空，跳过
         if (!title || !content) {
-          console.log(`⏭️  跳过记录 ${recordId}（标题或正文为空）`)
+          console.log(`⏭️  跳过记录 ${recordId}（标题=${!!title}, 正文=${!!content}）`)
           skipCount++
           continue
         }
