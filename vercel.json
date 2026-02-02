@@ -5,5 +5,11 @@
   "regions": ["hnd1"],
   "env": {
     "NEXT_PUBLIC_APP_URL": "https://$VERCEL_URL"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/monitor/feishu-token",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }
