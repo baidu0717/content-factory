@@ -99,6 +99,14 @@ export async function getUserAccessToken(): Promise<string> {
 
     if (data.code !== 0) {
       console.error('[飞书Auth] 刷新user_access_token失败:', data)
+
+      // 检查是否是 refresh_token 过期或无效
+      if (data.code === 10012 || data.code === 99991400 || data.msg?.includes('invalid') || data.msg?.includes('expired')) {
+        const errorMsg = `Refresh Token 已过期或无效，请重新授权。访问: ${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/feishu-auth`
+        console.error('[飞书Auth] ❌', errorMsg)
+        throw new Error(errorMsg)
+      }
+
       throw new Error(`刷新token失败: ${data.msg || data.message || JSON.stringify(data)}`)
     }
 
@@ -125,6 +133,55 @@ export async function getUserAccessToken(): Promise<string> {
 }
 
 /**
+ * 检测图片格式
+ */
+function detectImageFormat(buffer: Buffer): 'heif' | 'jpeg' | 'png' | 'webp' | 'unknown' {
+  // HEIF/HEIC: 前12字节包含 'ftyp' 和 'heic'/'mif1'
+  if (buffer.length > 12) {
+    const header = buffer.toString('ascii', 4, 12)
+    if (header.includes('ftyp') && (buffer.toString('ascii', 8, 12) === 'heic' || buffer.toString('ascii', 8, 12) === 'mif1')) {
+      return 'heif'
+    }
+  }
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return 'jpeg'
+  }
+
+  // PNG: 89 50 4E 47
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+    return 'png'
+  }
+
+  // WebP: RIFF ... WEBP
+  if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+    return 'webp'
+  }
+
+  return 'unknown'
+}
+
+/**
+ * 将HEIF格式转换为JPEG（使用Canvas API）
+ */
+async function convertHeifToJpeg(heifBuffer: Buffer): Promise<Buffer> {
+  try {
+    console.log('[图片转换] HEIF格式检测，尝试转换为JPEG...')
+
+    // 方案：直接修改URL参数，让小红书服务器返回JPEG
+    // 但这里我们已经下载了HEIF，需要在Node.js中转换
+    // 由于Node.js环境没有Canvas/Image API，我们需要使用sharp库
+    // 但为了避免额外依赖，我们采用替代方案：修改下载时的URL
+
+    throw new Error('HEIF格式需要转换，建议在下载时就请求JPEG格式')
+  } catch (error) {
+    console.error('[图片转换] 转换失败:', error)
+    throw error
+  }
+}
+
+/**
  * 上传文件到飞书云文档
  * 参考官方SDK示例：使用 bitable_image 作为 parent_type
  */
@@ -136,6 +193,24 @@ export async function uploadFileToFeishu(
   const userAccessToken = await getUserAccessToken()
 
   console.log('[飞书文件上传] 开始上传:', fileName)
+  console.log('[飞书文件上传] 文件大小:', fileBuffer.length, 'bytes')
+
+  // 检测图片格式
+  const format = detectImageFormat(fileBuffer)
+  console.log('[飞书文件上传] 检测到图片格式:', format)
+
+  // 如果是HEIF格式，记录警告（理论上不应该出现，因为下载时已经转换为JPEG）
+  if (format === 'heif') {
+    console.warn('[飞书文件上传] ⚠️  检测到HEIF格式，这不应该发生（下载时应已转换为JPEG）')
+    console.warn('[飞书文件上传] 尝试以 image/jpeg MIME 类型上传...')
+  }
+
+  // 根据格式设置MIME类型
+  let mimeType = 'image/jpeg'
+  if (format === 'png') mimeType = 'image/png'
+  if (format === 'webp') mimeType = 'image/webp'
+
+  console.log('[飞书文件上传] 使用 MIME 类型:', mimeType)
   console.log('[飞书文件上传] 使用 user_access_token')
   console.log('[飞书文件上传] parent_type: bitable_image')
   console.log('[飞书文件上传] parent_node (appToken):', appToken)
@@ -143,7 +218,7 @@ export async function uploadFileToFeishu(
   // 构建 multipart/form-data
   const formData = new FormData()
   const uint8Array = new Uint8Array(fileBuffer)
-  const blob = new Blob([uint8Array], { type: 'image/jpeg' })
+  const blob = new Blob([uint8Array], { type: mimeType })
 
   // 使用正确的参数（参考官方SDK示例）
   formData.append('file_name', fileName)
@@ -169,7 +244,7 @@ export async function uploadFileToFeishu(
 
   const fileToken = data.data.file_token
 
-  console.log('[飞书文件上传] 上传成功，file_token:', fileToken)
+  console.log('[飞书文件上传] ✅ 上传成功，file_token:', fileToken)
 
   return fileToken
 }

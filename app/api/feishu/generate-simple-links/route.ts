@@ -4,15 +4,15 @@ import { getUserAccessToken, getAppAccessToken } from '@/lib/feishuAuth'
 const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
 const APP_TOKEN = process.env.FEISHU_DEFAULT_APP_TOKEN || ''
 const TABLE_ID = process.env.FEISHU_DEFAULT_TABLE_ID || ''
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://content-factory-jade-nine.vercel.app'
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 /**
- * POST /api/feishu/generate-rewrite-links
- * 为飞书表格中所有记录生成复刻链接
+ * POST /api/feishu/generate-simple-links
+ * 为飞书表格中所有记录生成简化版复刻链接（使用 record_id）
  */
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔗 开始生成复刻链接...')
+    console.log('🔗 开始生成简化版复刻链接...')
 
     if (!APP_TOKEN || !TABLE_ID) {
       return NextResponse.json({
@@ -22,7 +22,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. 获取访问令牌
-    // 优先尝试用户token，如果失败则使用app token（适用于应用级表格）
     let accessToken: string
     try {
       accessToken = await getUserAccessToken()
@@ -53,12 +52,7 @@ export async function POST(request: NextRequest) {
     const records = recordsData.data.items
     console.log(`✅ 获取到 ${records.length} 条记录`)
 
-    // 调试：打印第一条完整记录
-    if (records.length > 0) {
-      console.log('[调试] API返回的第一条原始记录:', JSON.stringify(records[0], null, 2))
-    }
-
-    // 3. 获取字段列表，找到字段ID
+    // 3. 获取字段列表
     console.log('🔍 获取字段映射...')
     const fieldsResponse = await fetch(
       `${FEISHU_API_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/fields`,
@@ -84,21 +78,17 @@ export async function POST(request: NextRequest) {
 
     const titleFieldId = fieldMap['标题']
     const contentFieldId = fieldMap['正文']
-    const tagsFieldId = fieldMap['话题标签']
-    // 支持两种字段名：去复刻 或 复刻链接
     const linkFieldId = fieldMap['去复刻'] || fieldMap['复刻链接']
-    // 找到链接字段的中文名称（用于更新时）
-    const linkFieldName = Object.keys(fieldMap).find(name => fieldMap[name] === linkFieldId)
 
-    if (!titleFieldId || !contentFieldId || !tagsFieldId || !linkFieldId) {
+    if (!titleFieldId || !contentFieldId || !linkFieldId) {
       return NextResponse.json({
         success: false,
-        error: '表格中缺少必要字段：标题、正文、话题标签、去复刻（或复刻链接）',
+        error: '表格中缺少必要字段：标题、正文、去复刻（或复刻链接）',
         found_fields: Object.keys(fieldMap),
       }, { status: 400 })
     }
 
-    // 4. 为每条记录生成复刻链接
+    // 4. 为每条记录生成简化版链接
     console.log('🔗 开始生成链接...')
     let successCount = 0
     let skipCount = 0
@@ -109,19 +99,8 @@ export async function POST(request: NextRequest) {
         const recordId = record.record_id
         const fields = record.fields
 
-        // 注意：record.fields 的 key 是字段名，不是 field_id
         const title = fields['标题'] || ''
         const content = fields['正文'] || ''
-        const tags = fields['话题标签'] || ''
-
-        // 调试：打印第一条记录的字段信息
-        if (successCount === 0 && skipCount === 0) {
-          console.log('[调试] 第一条记录字段ID:', Object.keys(fields))
-          console.log('[调试] 字段映射:', { titleFieldId, contentFieldId, tagsFieldId })
-          console.log('[调试] 第一条记录完整fields:', JSON.stringify(fields, null, 2))
-          console.log('[调试] 标题字段ID:', titleFieldId, '值:', title)
-          console.log('[调试] 正文字段ID:', contentFieldId, '值:', content ? content.substring(0, 50) : '空')
-        }
 
         // 如果标题或正文为空，跳过
         if (!title || !content) {
@@ -130,30 +109,10 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // 生成复刻链接
-        const params = new URLSearchParams()
-        params.append('title', title)
-        params.append('content', content)
-        if (tags) params.append('tags', tags)
+        // 生成简化版链接（使用 record_id）
+        const rewriteUrl = `${BASE_URL}/api/feishu/redirect-to-rewrite?record_id=${recordId}`
 
-        const rewriteUrl = `${BASE_URL}/rewrite?${params.toString()}`
-
-        // 调试：打印第一条记录的更新信息
-        if (successCount === 0 && errorCount === 0) {
-          console.log('[调试] 链接字段名:', linkFieldName)
-          console.log('[调试] 链接字段ID:', linkFieldId)
-          console.log('[调试] 生成的URL:', rewriteUrl)
-          console.log('[调试] 即将发送的更新数据:', JSON.stringify({
-            fields: {
-              [linkFieldId]: {
-                link: rewriteUrl,
-                text: '去复刻'
-              }
-            }
-          }, null, 2))
-        }
-
-        // 更新记录的"复刻链接"字段（使用field_id）
+        // 更新记录的"复刻链接"字段
         const updateResponse = await fetch(
           `${FEISHU_API_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records/${recordId}`,
           {
@@ -164,7 +123,7 @@ export async function POST(request: NextRequest) {
             },
             body: JSON.stringify({
               fields: {
-                [linkFieldId]: rewriteUrl  // 按钮字段直接传 URL 字符串
+                [linkFieldId]: rewriteUrl
               }
             })
           }
@@ -174,10 +133,6 @@ export async function POST(request: NextRequest) {
 
         if (updateData.code !== 0) {
           console.error(`❌ 更新记录 ${recordId} 失败:`, updateData.msg)
-          // 调试：打印完整的错误响应
-          if (successCount === 0 && errorCount === 0) {
-            console.error('[调试] 完整错误响应:', JSON.stringify(updateData, null, 2))
-          }
           errorCount++
         } else {
           console.log(`✅ 已生成链接: ${recordId}`)
@@ -206,7 +161,7 @@ export async function POST(request: NextRequest) {
         skipped: skipCount,
         failed: errorCount,
       },
-      message: '复刻链接生成完成！',
+      message: '简化版复刻链接生成完成！',
     })
 
   } catch (error) {

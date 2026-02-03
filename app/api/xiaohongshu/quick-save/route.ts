@@ -213,10 +213,22 @@ async function parseXiaohongshu(url: string) {
 
 /**
  * 下载图片（需要添加 Referer header，否则小红书服务器会返回 403）
+ * 自动将 HEIF 格式转换为 JPEG（修改 URL 参数让小红书服务器返回 JPEG）
  */
 async function downloadImage(url: string): Promise<Buffer> {
-  console.log('[图片下载] 下载图片:', url)
-  const response = await fetch(url, {
+  // 将 HEIF 格式的图片 URL 转换为 JPEG 格式
+  // 小红书 CDN URL 格式: https://sns-img-qc.xhscdn.com/xxx?imageView2/.../format/heif/...
+  // 转换策略：将 format/heif 替换为 format/jpg
+  let processedUrl = url
+  if (url.includes('format/heif')) {
+    processedUrl = url.replace(/format\/heif/g, 'format/jpg')
+    console.log('[图片下载] 检测到HEIF格式，转换为JPEG')
+    console.log('[图片下载] 原始URL:', url)
+    console.log('[图片下载] 转换后:', processedUrl)
+  }
+
+  console.log('[图片下载] 下载图片:', processedUrl)
+  const response = await fetch(processedUrl, {
     headers: {
       'Referer': 'https://www.xiaohongshu.com/',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -448,9 +460,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { url, appToken, tableId } = body
+    const { url, appToken, tableId, async: isAsync } = body
 
-    console.log('[快捷保存] 收到请求:', { url, appToken, tableId })
+    console.log('[快捷保存] 收到请求:', { url, appToken, tableId, async: isAsync })
     console.log('[快捷保存] 环境变量 DEFAULT_APP_TOKEN:', process.env.FEISHU_DEFAULT_APP_TOKEN)
     console.log('[快捷保存] 环境变量 DEFAULT_TABLE_ID:', process.env.FEISHU_DEFAULT_TABLE_ID)
 
@@ -473,6 +485,23 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // 如果是异步模式，立即返回成功响应，后台继续处理
+    if (isAsync) {
+      console.log('[快捷保存] 🚀 异步模式：立即返回，后台处理')
+
+      // 在后台异步处理（不等待）
+      processAsync(url, finalAppToken, finalTableId, startTime).catch(error => {
+        console.error('[快捷保存-异步] 后台处理失败:', error)
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: `✅ 收到请求，正在后台保存...\n\n稍后请刷新飞书表格查看结果`,
+        data: { async: true }
+      })
+    }
+
+    // 同步模式（原有逻辑）
     // 1. 解析小红书链接
     const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime } = await parseXiaohongshu(url)
 
@@ -526,5 +555,44 @@ export async function POST(request: NextRequest) {
       success: false,
       message: `❌ 发生错误: ${error instanceof Error ? error.message : '未知错误'}`
     }, { status: 500 })
+  }
+}
+
+/**
+ * 异步处理函数（后台执行）
+ */
+async function processAsync(url: string, appToken: string, tableId: string, startTime: number) {
+  try {
+    console.log('[快捷保存-异步] 开始后台处理...')
+
+    // 1. 解析小红书链接
+    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime } = await parseXiaohongshu(url)
+
+    // 2. 处理图片
+    const fileTokens = await processImages(images, appToken)
+
+    // 3. 保存到飞书表格
+    await saveToFeishu(
+      appToken,
+      tableId,
+      title,
+      content,
+      tags,
+      fileTokens,
+      url,
+      authorName,
+      viewCount,
+      likedCount,
+      collectedCount,
+      commentCount,
+      publishTime
+    )
+
+    const duration = Date.now() - startTime
+    console.log('[快捷保存-异步] ✅ 后台处理成功! 耗时:', duration + 'ms')
+
+  } catch (error) {
+    console.error('[快捷保存-异步] ❌ 后台处理失败:', error)
+    throw error
   }
 }

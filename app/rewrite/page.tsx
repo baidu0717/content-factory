@@ -73,7 +73,26 @@ function URLParamsLoader({
 
     const title = searchParams.get('title')
     const content = searchParams.get('content')
-    const tags = searchParams.get('tags')
+    let tags = searchParams.get('tags')
+
+    // 修复：如果 tags 为空，尝试从 URL hash 中读取
+    // 这是因为飞书按钮字段在处理以 # 开头的字段值时，浏览器会将其解析为 URL fragment
+    if (!tags && typeof window !== 'undefined' && window.location.hash) {
+      let hash = decodeURIComponent(window.location.hash.substring(1)) // 移除 URL 的 #
+      console.log('[URL修复] 从 hash 中读取 tags:', hash)
+
+      // 恢复第一个标签的 # 号（因为 hash 移除了 URL 的 # 符号）
+      if (hash && !hash.startsWith('#')) {
+        hash = '#' + hash
+      }
+
+      // 去除 [话题] 标记，只保留纯标签
+      // 例如：#黑财香[话题]# → #黑财香
+      hash = hash.replace(/\[话题\]#?/g, '')
+
+      console.log('[URL修复] 处理后的 tags:', hash)
+      tags = hash
+    }
 
     console.log('[URL参数] title:', title)
     console.log('[URL参数] content:', content)
