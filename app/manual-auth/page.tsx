@@ -12,8 +12,10 @@ export default function ManualAuthPage() {
   const appId = 'cli_a9bac6be07789cc4'
   const appSecret = 'kqcP7odJy9x0AhtNMR5FYg4KPXs5lwRJ'
 
-  // 飞书用户身份验证页面 - 可以直接获取 refresh_token
-  const feishuAuthUrl = 'https://open.feishu.cn/document/common-capabilities/sso/api/get-user-access-token'
+  // 飞书OAuth授权URL - 用户授权后可以获取code，然后换取refresh_token
+  const scope = 'bitable:app'
+  const redirectUri = 'http://localhost:3000/api/feishu/auth/callback'
+  const feishuOAuthUrl = `https://open.feishu.cn/open-apis/authen/v1/authorize?app_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=manual`
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -129,18 +131,43 @@ export default function ManualAuthPage() {
                 </div>
               </div>
 
-              <a
-                href="https://open.feishu.cn/api-explorer/cli_a9bac6be07789cc4?apiName=oidc_refresh_access_token&from=op_doc_tab&project=authen&resource=oidc&version=v1"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full"
-              >
-                <button className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg flex items-center justify-center text-lg font-semibold">
-                  <ExternalLink className="w-6 h-6 mr-2" />
-                  打开飞书 API Explorer
-                  <ArrowRight className="w-6 h-6 ml-2" />
-                </button>
-              </a>
+              <div className="space-y-3">
+                {/* 方法1: 配置redirect_uri后使用 */}
+                <div>
+                  <a
+                    href={feishuOAuthUrl}
+                    className="block w-full"
+                  >
+                    <button className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all shadow-lg flex items-center justify-center text-lg font-semibold">
+                      <ExternalLink className="w-6 h-6 mr-2" />
+                      方法1: 一键授权获取 (推荐)
+                      <ArrowRight className="w-6 h-6 ml-2" />
+                    </button>
+                  </a>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    需要先配置 redirect_uri，否则会报错
+                  </p>
+                </div>
+
+                {/* 方法2: 使用API Explorer */}
+                <div>
+                  <a
+                    href="https://open.feishu.cn/api-explorer/cli_a9bac6be07789cc4?apiName=authorize&project=authen&resource=authen&version=v1"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full"
+                  >
+                    <button className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg flex items-center justify-center text-lg font-semibold">
+                      <ExternalLink className="w-6 h-6 mr-2" />
+                      方法2: 使用 API Explorer
+                      <ArrowRight className="w-6 h-6 ml-2" />
+                    </button>
+                  </a>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    无需配置，但步骤稍多
+                  </p>
+                </div>
+              </div>
 
               <div className="bg-blue-50 rounded-lg p-4">
                 <h3 className="font-semibold text-blue-900 mb-2">在 API Explorer 中的操作:</h3>
