@@ -42,6 +42,11 @@ interface XiaohongshuNote {
   tags?: string
   time?: number
   url: string
+  // 添加直接访问的互动数据字段（用于兼容不同数据源）
+  view_count?: number
+  liked_count?: number
+  collected_count?: number
+  comment_count?: number
 }
 
 // 采集历史记录类型
@@ -398,7 +403,7 @@ export default function XiaohongshuExtractPage() {
           url: inputUrl.trim(),
           appToken: appToken.trim(),
           tableId: tableId.trim(),
-          authorName: extractedData.user?.nickname || extractedData.user?.name || '',
+          authorName: extractedData.user?.nickname || '',
           publishTime: publishTime,
           viewCount: extractedData.view_count || 0,
           likedCount: extractedData.liked_count || 0,
