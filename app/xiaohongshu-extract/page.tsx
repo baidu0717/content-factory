@@ -90,9 +90,9 @@ export default function XiaohongshuExtractPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isCheckingLogin, setIsCheckingLogin] = useState(true)
 
-  // 飞书表格配置
-  const [appToken, setAppToken] = useState('')
-  const [tableId, setTableId] = useState('')
+  // 飞书表格配置（使用环境变量默认值）
+  const [appToken, setAppToken] = useState(process.env.NEXT_PUBLIC_FEISHU_DEFAULT_APP_TOKEN || '')
+  const [tableId, setTableId] = useState(process.env.NEXT_PUBLIC_FEISHU_DEFAULT_TABLE_ID || '')
 
   // 笔记记录列表
   const [savedNotes, setSavedNotes] = useState<any[]>([])
