@@ -6,10 +6,10 @@ const APP_TOKEN = process.env.FEISHU_DEFAULT_APP_TOKEN || ''
 const TABLE_ID = process.env.FEISHU_DEFAULT_TABLE_ID || ''
 
 /**
- * GET /api/feishu/get-records
+ * GET /api/feishu/get-records?page_size=5
  * 获取飞书表格记录（用于测试）
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     console.log('[获取记录] 开始获取飞书表格记录...')
 
@@ -20,11 +20,15 @@ export async function GET() {
       }, { status: 400 })
     }
 
+    // 从URL参数获取page_size,默认500条
+    const { searchParams } = new URL(request.url)
+    const pageSize = searchParams.get('page_size') || '500'
+
     const appAccessToken = await getAppAccessToken()
 
-    // 获取最新的5条记录
+    // 获取记录
     const response = await fetch(
-      `${FEISHU_API_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records?page_size=5`,
+      `${FEISHU_API_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records?page_size=${pageSize}`,
       {
         headers: {
           'Authorization': `Bearer ${appAccessToken}`

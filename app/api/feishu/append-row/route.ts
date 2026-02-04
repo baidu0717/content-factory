@@ -229,10 +229,13 @@ export async function POST(request: NextRequest) {
       '话题标签': tags || '',
     }
 
-    // 添加图片附件字段
+    // 添加图片附件字段（字段名必须与飞书表格完全一致）
     if (fileTokens[0]) recordFields['封面'] = [{ file_token: fileTokens[0] }]
-    if (fileTokens[1]) recordFields['图片 2'] = [{ file_token: fileTokens[1] }]
-    if (fileTokens[2]) recordFields['图片 3'] = [{ file_token: fileTokens[2] }]
+    if (fileTokens[1]) recordFields['图片2'] = [{ file_token: fileTokens[1] }]
+    if (fileTokens.length > 2) {
+      // 第3张及后续图片都放到"后续图片"字段
+      recordFields['后续图片'] = fileTokens.slice(2).map(token => ({ file_token: token }))
+    }
 
     console.log('[飞书导出API] 准备写入的字段:', JSON.stringify(recordFields, null, 2))
 
