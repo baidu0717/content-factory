@@ -22,6 +22,12 @@ interface AppendRowRequest {
   url: string            // 笔记链接
   appToken: string       // 多维表格的 app_token
   tableId: string        // 数据表的 table_id
+  authorName?: string    // 作者昵称
+  publishTime?: string   // 发布时间
+  viewCount?: number     // 浏览数
+  likedCount?: number    // 点赞数
+  collectedCount?: number // 收藏数
+  commentCount?: number  // 评论数
 }
 
 // getTenantAccessToken 已移除，改用用户授权的 user_access_token
@@ -155,10 +161,14 @@ export async function POST(request: NextRequest) {
 
     // 解析请求参数
     const body: AppendRowRequest = await request.json()
-    const { title, images, content, tags, url, appToken, tableId } = body
+    const {
+      title, images, content, tags, url, appToken, tableId,
+      authorName, publishTime, viewCount, likedCount, collectedCount, commentCount
+    } = body
 
     console.log('[飞书导出API] 笔记标题:', title)
     console.log('[飞书导出API] 图片数量:', images.length)
+    console.log('[飞书导出API] 作者:', authorName)
     console.log('[飞书导出API] 目标表格:', appToken, tableId)
 
     // 参数验证
@@ -217,17 +227,30 @@ export async function POST(request: NextRequest) {
 
     console.log(`[飞书导出API] 成功上传 ${fileTokens.length}/${imagesToProcess.length} 张图片`)
 
+    // 清理话题标签：移除 [话题] 文本
+    const cleanTags = (tags || '').replace(/\[话题\]/g, '').trim()
+
     // 准备多维表格记录数据
     // 注意：字段名必须与多维表格中的字段名完全一致
     // URL类型字段格式：{ link: "url", text: "显示文本" } 或 { link: "url" }
     // 文本/多行文本类型：直接传字符串
     // 附件类型字段格式：[{ file_token: "xxx" }]
+    // 数字类型：直接传数字
     const recordFields: Record<string, any> = {
       '笔记链接': url,  // 多行文本类型，直接传字符串
       '标题': title,
       '正文': content || '',
-      '话题标签': tags || '',
+      '话题标签': cleanTags,
     }
+
+    // 添加可选字段（如果有值才添加）
+    if (authorName) recordFields['作者昵称'] = authorName
+    if (publishTime) recordFields['发布时间'] = publishTime
+    // 注意：飞书表格中的浏览数、点赞数等字段是多行文本类型，需要转换为字符串
+    if (typeof viewCount === 'number') recordFields['浏览数'] = String(viewCount)
+    if (typeof likedCount === 'number') recordFields['点赞数'] = String(likedCount)
+    if (typeof collectedCount === 'number') recordFields['收藏数'] = String(collectedCount)
+    if (typeof commentCount === 'number') recordFields['评论数'] = String(commentCount)
 
     // 添加图片附件字段（字段名必须与飞书表格完全一致）
     if (fileTokens[0]) recordFields['封面'] = [{ file_token: fileTokens[0] }]

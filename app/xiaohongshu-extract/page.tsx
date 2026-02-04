@@ -370,6 +370,21 @@ export default function XiaohongshuExtractPage() {
       // 准备数据
       const tags = extractedData.tags || ''
 
+      // 格式化发布时间
+      let publishTime = ''
+      if (extractedData.time) {
+        const date = new Date(extractedData.time)
+        publishTime = date.toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        }).replace(/\//g, '-')
+      }
+
       const response = await fetch('/api/feishu/append-row', {
         method: 'POST',
         headers: {
@@ -383,6 +398,12 @@ export default function XiaohongshuExtractPage() {
           url: inputUrl.trim(),
           appToken: appToken.trim(),
           tableId: tableId.trim(),
+          authorName: extractedData.user?.nickname || extractedData.user?.name || '',
+          publishTime: publishTime,
+          viewCount: extractedData.view_count || 0,
+          likedCount: extractedData.liked_count || 0,
+          collectedCount: extractedData.collected_count || 0,
+          commentCount: extractedData.comment_count || 0,
         }),
       })
 
