@@ -337,7 +337,7 @@ function RewritePageContent() {
   }, [editableTitle, editableContent, editableTags, uploadedFiles])
 
   // 提示词设置
-  const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为更吸引人的新标题，保持原意但使用不同的表达方式。直接输出改写后的标题，不要有任何解释：')
+  const [titlePrompt, setTitlePrompt] = useState('请将以下小红书标题改写为一个全新的、更吸引人的标题。要求：1) 保持核心意思 2) 必须使用完全不同的词汇和句式 3) 不要直接复制原标题的任何部分 4) 直接输出新标题，不要有任何解释或标点符号：')
   const [contentPrompt, setContentPrompt] = useState('请将以下小红书正文改写为全新的内容，保持核心观点但使用完全不同的表达方式、案例和结构。直接输出改写后的完整正文，不要有任何策略说明或解释，只输出正文内容本身：')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
   const [imageStyle, setImageStyle] = useState('original')
