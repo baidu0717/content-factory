@@ -138,8 +138,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 计算字数和阅读时间
-    const wordCount = newContent.replace(/\s/g, '').length
+    // 计算字数和阅读时间（如果有正文的话）
+    const wordCount = newContent ? newContent.replace(/\s/g, '').length : 0
     const readingTime = Math.ceil(wordCount / 400) // 假设每分钟阅读400字
 
     return NextResponse.json({
