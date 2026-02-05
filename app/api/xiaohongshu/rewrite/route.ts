@@ -60,7 +60,20 @@ export async function POST(request: NextRequest) {
           {
             role: 'user',
             parts: [{
-              text: `${titlePrompt}\n\n原标题：${title}\n\n请创作一个新标题：`
+              text: `${titlePrompt}
+
+示例1：
+原标题：落地巴黎我懵了…
+新标题：💰第一次来巴黎，这3个坑千万别踩！
+
+示例2：
+原标题：今天分享一个好用的App
+新标题：🔥这个App我藏了2年，终于忍不住分享了！
+
+现在轮到你了：
+原标题：${title}
+
+新标题：`
             }]
           }
         ]
@@ -70,9 +83,9 @@ export async function POST(request: NextRequest) {
         const titleResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
           contents: titleContents,
-          generationConfig: {
-            temperature: 0.9,  // 提高温度到0.9，增加创造性
-            maxOutputTokens: 2000  // 增加到2000，确保不会被截断
+          config: {
+            temperature: 0.9,
+            maxOutputTokens: 2000
           }
         })
 
@@ -111,9 +124,9 @@ export async function POST(request: NextRequest) {
         const contentResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
           contents: contentContents,
-          generationConfig: {
+          config: {
             temperature: 0.8,
-            maxOutputTokens: 8192  // 增加到8192，支持更长的内容
+            maxOutputTokens: 8192
           }
         })
 
