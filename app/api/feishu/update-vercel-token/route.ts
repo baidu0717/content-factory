@@ -94,10 +94,54 @@ export async function POST(request: NextRequest) {
 
     console.log('[Vercel更新] ✅ 环境变量更新成功')
 
-    return NextResponse.json({
-      success: true,
-      message: 'Vercel环境变量已更新，需要重新部署才能生效'
-    })
+    // 自动触发重新部署
+    try {
+      console.log('[Vercel更新] 触发自动部署...')
+      const deployUrl = `https://api.vercel.com/v13/deployments${teamId ? `?teamId=${teamId}` : ''}`
+
+      const deployResponse = await fetch(deployUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${vercelToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: 'content-factory',
+          project: projectId,
+          target: 'production',
+          gitSource: {
+            type: 'github',
+            repoId: process.env.VERCEL_GIT_REPO_ID,
+            ref: 'main'
+          }
+        })
+      })
+
+      if (deployResponse.ok) {
+        const deployData = await deployResponse.json()
+        console.log('[Vercel更新] ✅ 自动部署已触发:', deployData.url)
+        return NextResponse.json({
+          success: true,
+          message: 'Vercel环境变量已更新，并已自动触发重新部署',
+          deploymentUrl: deployData.url
+        })
+      } else {
+        const errorText = await deployResponse.text()
+        console.error('[Vercel更新] ⚠️ 自动部署失败:', errorText)
+        return NextResponse.json({
+          success: true,
+          message: 'Vercel环境变量已更新，但自动部署失败，请手动重新部署',
+          warning: '自动部署失败'
+        })
+      }
+    } catch (deployError) {
+      console.error('[Vercel更新] ⚠️ 自动部署异常:', deployError)
+      return NextResponse.json({
+        success: true,
+        message: 'Vercel环境变量已更新，但自动部署失败，请手动重新部署',
+        warning: '自动部署失败'
+      })
+    }
 
   } catch (error) {
     console.error('[Vercel更新] 错误:', error)
