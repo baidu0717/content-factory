@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL
+// 固定使用生产域名，避免 Vercel 不同环境域名不一致的问题
+const BASE_URL = 'https://content-factory-jade-nine.vercel.app'
 
 /**
  * GET /api/feishu/auth/url
