@@ -17,7 +17,9 @@ let userTokenExpireTime: number = 0
  */
 async function updateVercelToken(newToken: string): Promise<void> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://content-factory-jade-nine.vercel.app'}/api/feishu/update-vercel-token`, {
+    // 固定使用生产域名，避免在不同环境下域名不一致
+    const apiUrl = 'https://content-factory-jade-nine.vercel.app/api/feishu/update-vercel-token'
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ newRefreshToken: newToken })
