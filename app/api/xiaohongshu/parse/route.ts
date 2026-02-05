@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import axios from 'axios'
 
 // 极致了 API 配置（统一使用极致了API）
 const JZL_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY || ''
@@ -7,12 +8,53 @@ const JZL_API_URL = 'https://www.dajiala.com/fbmain/monitor/v3/xhs'
 /**
  * 从小红书链接中提取笔记ID
  */
-function extractNoteId(url: string): string | null {
+async function extractNoteId(url: string): Promise<string | null> {
   try {
+    let targetUrl = url
+
+    // 如果是短链接，需要先解析重定向
+    if (url.includes('xhslink.com') || url.includes('xhs.cn')) {
+      console.log('[笔记ID提取] 检测到短链接，尝试解析重定向...')
+      try {
+        // 使用 axios 禁用自动重定向，手动解析 Location 头
+        const response = await axios.head(url, {
+          maxRedirects: 0,  // 禁用自动重定向
+          validateStatus: (status) => status >= 200 && status < 400,  // 接受 3xx 状态码
+        })
+
+        // 从 Location 头获取重定向目标URL
+        const location = response.headers['location']
+        if (location) {
+          targetUrl = location
+          console.log('[笔记ID提取] 重定向后的URL:', targetUrl)
+        } else {
+          console.error('[笔记ID提取] 短链接未返回 Location 头')
+          return null
+        }
+      } catch (error) {
+        // axios 在 3xx 时会抛出错误，但我们需要的 Location 在 error.response 中
+        if (axios.isAxiosError(error) && error.response) {
+          console.log('[笔记ID提取] Axios响应状态:', error.response.status)
+          console.log('[笔记ID提取] Axios响应头:', JSON.stringify(error.response.headers))
+          const location = error.response.headers['location']
+          if (location) {
+            targetUrl = location
+            console.log('[笔记ID提取] 重定向后的URL:', targetUrl)
+          } else {
+            console.error('[笔记ID提取] 短链接未返回 Location 头')
+            return null
+          }
+        } else {
+          console.error('[笔记ID提取] 解析短链接失败:', error)
+          return null
+        }
+      }
+    }
+
     // 支持的格式：
     // 1. https://www.xiaohongshu.com/explore/6929d4850000000021021d46
     // 2. https://www.xiaohongshu.com/discovery/item/6929d4850000000021021d46
-    // 3. http://xhslink.com/xxx (需要解析重定向后的URL)
+    // 3. https://www.xiaohongshu.com/note/6929d4850000000021021d46
 
     const patterns = [
       /\/explore\/([a-zA-Z0-9]+)/,
@@ -21,12 +63,14 @@ function extractNoteId(url: string): string | null {
     ]
 
     for (const pattern of patterns) {
-      const match = url.match(pattern)
+      const match = targetUrl.match(pattern)
       if (match && match[1]) {
+        console.log('[笔记ID提取] 成功提取ID:', match[1])
         return match[1]
       }
     }
 
+    console.error('[笔记ID提取] 无法从URL中提取ID:', targetUrl)
     return null
   } catch (error) {
     console.error('[笔记ID提取] 提取失败:', error)
@@ -172,7 +216,7 @@ export async function POST(request: NextRequest) {
     console.log('[小红书解析] 开始解析链接:', url)
 
     // 从URL提取笔记ID
-    const noteId = extractNoteId(url)
+    const noteId = await extractNoteId(url)
 
     if (!noteId) {
       return NextResponse.json(
