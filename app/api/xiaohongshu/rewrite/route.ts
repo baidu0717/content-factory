@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
     // 改写标题
     if (title && titlePrompt) {
       console.log('[内容改写] 正在改写标题...')
+      console.log('[内容改写] 标题提示词:', titlePrompt.substring(0, 100) + '...')
+      console.log('[内容改写] 原标题:', title)
       try {
         const titleContents = [
           {
@@ -63,11 +65,13 @@ export async function POST(request: NextRequest) {
           }
         ]
 
+        console.log('[内容改写] 发送到Gemini的完整提示:', titleContents[0].parts[0].text.substring(0, 200) + '...')
+
         const titleResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
           contents: titleContents,
           config: {
-            temperature: 0.8,
+            temperature: 0.9,  // 提高温度到0.9，增加创造性
             maxOutputTokens: 500  // 增加到500，支持更长的标题
           }
         })
@@ -78,6 +82,7 @@ export async function POST(request: NextRequest) {
         newTitle = generatedText?.trim() || title
         console.log('[内容改写] 新标题:', newTitle)
         console.log('[内容改写] 标题完成原因:', titleCandidate?.finishReason)
+        console.log('[内容改写] 标题是否改变:', newTitle !== title)
       } catch (error) {
         console.error('[内容改写] 标题改写失败:', error)
         if (error instanceof Error) {
@@ -86,6 +91,8 @@ export async function POST(request: NextRequest) {
         }
         // 标题改写失败不影响继续处理正文
       }
+    } else {
+      console.log('[内容改写] 跳过标题改写 - title:', !!title, 'titlePrompt:', !!titlePrompt)
     }
 
     // 改写正文

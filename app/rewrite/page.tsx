@@ -356,6 +356,8 @@ function RewritePageContent() {
 
   // ===== 一键改写标题 =====
   const handleRewriteTitle = useCallback(async () => {
+    console.log('[改写标题] 开始改写标题')
+    console.log('[改写标题] 当前标题:', editableTitle)
     setProcessingStep('正在改写标题...')
     try {
       const response = await fetch('/api/xiaohongshu/rewrite', {
@@ -363,21 +365,28 @@ function RewritePageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editableTitle,
-          content: editableContent,
-          titlePrompt: titlePrompt,
-          contentPrompt: contentPrompt
+          // 不传 content 和 contentPrompt，只改写标题
+          titlePrompt: titlePrompt
         })
       })
       const result = await response.json()
+      console.log('[改写标题] API返回结果:', result)
       if (result.success) {
+        console.log('[改写标题] 新标题:', result.data.newTitle)
         setEditableTitle(result.data.newTitle)
+        // 创建历史版本
+        createHistoryVersion(result.data.newTitle, editableContent, editableTags, 'ai-rewrite')
+      } else {
+        console.error('[改写标题] 改写失败:', result.error)
+        alert(`改写标题失败: ${result.error}`)
       }
     } catch (error) {
       console.error('改写标题失败:', error)
+      alert('改写标题失败，请重试')
     } finally {
       setProcessingStep('')
     }
-  }, [editableTitle, editableContent, titlePrompt, contentPrompt])
+  }, [editableTitle, editableContent, editableTags, titlePrompt, createHistoryVersion])
 
   // ===== 一键改写全部（标题+正文） =====
   const handleRewriteAll = useCallback(async () => {
