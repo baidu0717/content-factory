@@ -1,8 +1,149 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// 哼哼猫 API 配置
-const MEOWLOAD_API_KEY = 'nzlniaj8tyxkw0e7-16x5ek0gd6qr'
-const MEOWLOAD_API_URL = 'https://api.meowload.net/openapi/extract/post'
+// 极致了 API 配置（统一使用极致了API）
+const JZL_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY || ''
+const JZL_API_URL = 'https://www.dajiala.com/fbmain/monitor/v3/xhs'
+
+/**
+ * 从小红书链接中提取笔记ID
+ */
+function extractNoteId(url: string): string | null {
+  try {
+    // 支持的格式：
+    // 1. https://www.xiaohongshu.com/explore/6929d4850000000021021d46
+    // 2. https://www.xiaohongshu.com/discovery/item/6929d4850000000021021d46
+    // 3. http://xhslink.com/xxx (需要解析重定向后的URL)
+
+    const patterns = [
+      /\/explore\/([a-zA-Z0-9]+)/,
+      /\/discovery\/item\/([a-zA-Z0-9]+)/,
+      /\/note\/([a-zA-Z0-9]+)/,
+    ]
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern)
+      if (match && match[1]) {
+        return match[1]
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('[笔记ID提取] 提取失败:', error)
+    return null
+  }
+}
+
+/**
+ * 调用极致了API获取笔记完整详情（包含内容、图片、作者、互动数据）
+ */
+async function fetchNoteDetails(noteId: string) {
+  try {
+    console.log('[极致了API] 开始获取笔记详情, noteId:', noteId)
+
+    const response = await fetch(JZL_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        key: JZL_API_KEY,
+        type: 11, // 笔记详情接口
+        note_id: noteId,
+      })
+    })
+
+    const data = await response.json()
+
+    console.log('[极致了API] 响应状态码:', response.status)
+    console.log('[极致了API] 响应数据code:', data.code)
+
+    if (data.code !== 0) {
+      console.error('[极致了API] 获取失败:', data)
+      return null
+    }
+
+    const note = data.note_list?.[0]
+    if (!note) {
+      console.error('[极致了API] 笔记数据不存在')
+      return null
+    }
+
+    console.log('[极致了API] 成功获取笔记详情')
+    console.log('[极致了API] - 标题:', note.title || note.desc)
+    console.log('[极致了API] - 作者:', note.user?.nickname)
+    console.log('[极致了API] - 点赞:', note.liked_count || note.likes)
+    console.log('[极致了API] - 收藏:', note.collected_count)
+    console.log('[极致了API] - 评论:', note.comments_count)
+    console.log('[极致了API] - 浏览:', note.view_count)
+
+    // 提取图片列表
+    const images: string[] = []
+    if (note.images_list && Array.isArray(note.images_list)) {
+      note.images_list.forEach((img: any) => {
+        if (img.url) {
+          images.push(img.url)
+        }
+      })
+    }
+    console.log('[极致了API] - 图片数量:', images.length)
+
+    // 提取文本内容和话题标签
+    const rawText = note.desc || note.title || ''
+
+    // 提取话题标签
+    const tagRegex = /#[^#]+?(?:\[话题\])?#/g
+    const tags = rawText.match(tagRegex) || []
+    const tagsString = tags.join(' ')
+
+    // 移除话题标签,得到纯文本
+    const textWithoutTags = rawText.replace(tagRegex, '').trim()
+
+    // 分离标题和正文
+    let title = ''
+    let content = ''
+
+    if (textWithoutTags.includes('|||')) {
+      const parts = textWithoutTags.split('|||')
+      title = parts[0].trim()
+      content = parts.slice(1).join('|||').trim()
+    } else {
+      const lines = textWithoutTags.split('\n').filter((line: string) => line.trim())
+      if (lines.length > 0) {
+        title = lines[0].trim()
+        content = lines.slice(1).join('\n').trim()
+      } else {
+        title = textWithoutTags.substring(0, 50).trim()
+        content = textWithoutTags.substring(50).trim()
+      }
+    }
+
+    if (!content) {
+      content = title
+    }
+
+    return {
+      title,
+      content,
+      tags: tagsString,
+      images,
+      user: {
+        nickname: note.user?.nickname || note.user?.name || '',
+        avatar: note.user?.image || note.user?.avatar || '',
+        user_id: note.user?.userid || note.user?.id || '',
+      },
+      view_count: note.view_count || 0,
+      liked_count: note.liked_count || note.likes || 0,
+      collected_count: note.collected_count || 0,
+      comment_count: note.comments_count || 0,
+      create_time: note.create_time || null,
+      id: note.note_id || noteId,
+    }
+  } catch (error) {
+    console.error('[极致了API] 调用异常:', error)
+    return null
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,131 +171,51 @@ export async function POST(request: NextRequest) {
 
     console.log('[小红书解析] 开始解析链接:', url)
 
-    // 调用哼哼猫 API
-    const response = await fetch(MEOWLOAD_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': MEOWLOAD_API_KEY,
-        'accept-language': 'zh'
-      },
-      body: JSON.stringify({ url: url.trim() })
-    })
+    // 从URL提取笔记ID
+    const noteId = extractNoteId(url)
 
-    // 获取响应文本（用于调试）
-    const responseText = await response.text()
-    console.log('[小红书解析] API响应状态:', response.status)
-    console.log('[小红书解析] API响应内容:', responseText)
-
-    // 处理非 200 响应
-    if (!response.ok) {
-      let errorMessage = '解析失败'
-
-      try {
-        const errorData = JSON.parse(responseText)
-        errorMessage = errorData.message || errorMessage
-      } catch {
-        // 如果无法解析为 JSON，使用默认错误消息
-      }
-
-      // 根据状态码返回不同的错误信息
-      switch (response.status) {
-        case 400:
-          errorMessage = errorMessage || '解析失败，请检查链接是否包含有效内容'
-          break
-        case 422:
-          errorMessage = '链接格式错误，请检查后重试'
-          break
-        case 401:
-          errorMessage = 'API密钥无效，请联系管理员'
-          break
-        case 402:
-          errorMessage = 'API调用次数已用完，请联系管理员'
-          break
-        case 500:
-          errorMessage = '服务器错误，请稍后重试'
-          break
-      }
-
+    if (!noteId) {
       return NextResponse.json(
-        { success: false, error: errorMessage },
-        { status: response.status }
+        { success: false, error: '无法从链接中提取笔记ID，请检查链接格式' },
+        { status: 400 }
       )
     }
 
-    // 解析成功的响应
-    const data = JSON.parse(responseText)
+    console.log('[小红书解析] 提取到笔记ID:', noteId)
 
-    // 从text中提取标题、正文和话题标签
-    const rawText = data.text || ''
+    // 调用极致了API获取完整笔记详情
+    const noteDetails = await fetchNoteDetails(noteId)
 
-    // 提取话题标签 (格式: #xxx[话题]# 或 #xxx#)
-    const tagRegex = /#[^#]+?(?:\[话题\])?#/g
-    const tags = rawText.match(tagRegex) || []
-    const tagsString = tags.join(' ')
-
-    // 移除话题标签,得到纯文本
-    const textWithoutTags = rawText.replace(tagRegex, '').trim()
-
-    // 分离标题和正文 (通常第一句话是标题,|||可能是分隔符)
-    let title = ''
-    let content = ''
-
-    if (textWithoutTags.includes('|||')) {
-      // 如果有|||分隔符,按它分割
-      const parts = textWithoutTags.split('|||')
-      title = parts[0].trim()
-      content = parts.slice(1).join('|||').trim()
-    } else {
-      // 否则,取第一行或前50个字符作为标题
-      const lines = textWithoutTags.split('\n').filter((line: string) => line.trim())
-      if (lines.length > 0) {
-        title = lines[0].trim()
-        content = lines.slice(1).join('\n').trim()
-      } else {
-        title = textWithoutTags.substring(0, 50).trim()
-        content = textWithoutTags.substring(50).trim()
-      }
-    }
-
-    // 如果正文为空,使用标题作为正文
-    if (!content) {
-      content = title
-    }
-
-    // 只提取图片类型的 media
-    const images = data.medias
-      ?.filter((media: any) => media.media_type === 'image')
-      .map((media: any) => media.resource_url)
-      .filter(Boolean) || []
-
-    // 如果没有图片，检查是否有视频封面
-    if (images.length === 0) {
-      const videoCovers = data.medias
-        ?.filter((media: any) => media.media_type === 'video' && media.preview_url)
-        .map((media: any) => media.preview_url)
-        .filter(Boolean) || []
-
-      images.push(...videoCovers)
+    if (!noteDetails) {
+      return NextResponse.json(
+        { success: false, error: '获取笔记详情失败，请稍后重试' },
+        { status: 500 }
+      )
     }
 
     console.log('[小红书解析] 解析成功')
-    console.log('[小红书解析] 标题:', title)
-    console.log('[小红书解析] 正文:', content)
-    console.log('[小红书解析] 话题标签:', tagsString)
-    console.log('[小红书解析] 图片数量:', images.length)
+    console.log('[小红书解析] 标题:', noteDetails.title)
+    console.log('[小红书解析] 正文:', noteDetails.content)
+    console.log('[小红书解析] 话题标签:', noteDetails.tags)
+    console.log('[小红书解析] 图片数量:', noteDetails.images.length)
+    console.log('[小红书解析] 作者:', noteDetails.user.nickname)
 
     // 返回格式化的数据
     return NextResponse.json({
       success: true,
       data: {
-        title,
-        content,
-        tags: tagsString,
-        images,
-        id: data.id,
-        createdAt: data.created_at,
-        rawData: data // 保留原始数据供调试
+        title: noteDetails.title,
+        content: noteDetails.content,
+        tags: noteDetails.tags,
+        images: noteDetails.images,
+        id: noteDetails.id,
+        createdAt: noteDetails.create_time,
+        user: noteDetails.user,
+        view_count: noteDetails.view_count,
+        liked_count: noteDetails.liked_count,
+        collected_count: noteDetails.collected_count,
+        comment_count: noteDetails.comment_count,
+        create_time: noteDetails.create_time,
       }
     })
 
