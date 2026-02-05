@@ -99,39 +99,52 @@ export async function POST(request: NextRequest) {
       console.log('[Vercel更新] 触发自动部署...')
       const deployUrl = `https://api.vercel.com/v13/deployments${teamId ? `?teamId=${teamId}` : ''}`
 
+      // 构建部署请求体
+      const deployBody: any = {
+        name: projectId,
+        project: projectId,
+        target: 'production'
+      }
+
+      // 如果有配置 GitHub Repo ID，使用 Git 部署；否则使用强制重新部署
+      if (process.env.VERCEL_GIT_REPO_ID) {
+        deployBody.gitSource = {
+          type: 'github',
+          repoId: process.env.VERCEL_GIT_REPO_ID,
+          ref: 'main'
+        }
+        console.log('[Vercel更新] 使用 Git 源部署')
+      } else {
+        deployBody.forceNew = 1
+        console.log('[Vercel更新] 使用强制重新部署（未配置 VERCEL_GIT_REPO_ID）')
+      }
+
       const deployResponse = await fetch(deployUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${vercelToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          name: 'content-factory',
-          project: projectId,
-          target: 'production',
-          gitSource: {
-            type: 'github',
-            repoId: process.env.VERCEL_GIT_REPO_ID,
-            ref: 'main'
-          }
-        })
+        body: JSON.stringify(deployBody)
       })
 
       if (deployResponse.ok) {
         const deployData = await deployResponse.json()
-        console.log('[Vercel更新] ✅ 自动部署已触发:', deployData.url)
+        console.log('[Vercel更新] ✅ 自动部署已触发:', deployData.url || deployData.id)
         return NextResponse.json({
           success: true,
           message: 'Vercel环境变量已更新，并已自动触发重新部署',
-          deploymentUrl: deployData.url
+          deploymentUrl: deployData.url,
+          deploymentId: deployData.id
         })
       } else {
         const errorText = await deployResponse.text()
-        console.error('[Vercel更新] ⚠️ 自动部署失败:', errorText)
+        console.error('[Vercel更新] ⚠️ 自动部署失败:', deployResponse.status, errorText)
         return NextResponse.json({
           success: true,
           message: 'Vercel环境变量已更新，但自动部署失败，请手动重新部署',
-          warning: '自动部署失败'
+          warning: '自动部署失败',
+          error: errorText
         })
       }
     } catch (deployError) {
