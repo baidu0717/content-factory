@@ -32,7 +32,7 @@ export async function GET() {
       status: isTokenExpired ? 'expired' : 'error',
       message: errorMessage,
       needReauth: isTokenExpired,
-      authUrl: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/feishu-auth`
+      authUrl: `${process.env.NEXT_PUBLIC_APP_URL}/feishu-auth`
     }, { status: isTokenExpired ? 401 : 500 })
   }
 }

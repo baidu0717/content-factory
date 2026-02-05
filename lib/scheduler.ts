@@ -117,7 +117,7 @@ async function analyzeKeyword(
       console.log(`[调度器] 准备 ${topArticles.length} 篇文章进行 AI 分析`)
 
       // 调用 AI 洞察 API（通过内部 HTTP 请求）
-      const aiResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/ai-insights`, {
+      const aiResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/ai-insights`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -458,7 +458,7 @@ export async function runDailyAnalysis(): Promise<{
           ).lastInsertRowid as number
 
         // 生成报告 URL
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL
         const reportUrl = `${appUrl}/reports/${reportId}`
 
         // 构建飞书报告（包含报告链接）

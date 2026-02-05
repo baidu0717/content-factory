@@ -76,7 +76,7 @@ async function uploadImageToFeishu(
 
     // 使用axios上传，支持form-data
     const response = await axios.post(
-      `${FEISHU_API_URL}/drive/v1/medias/upload_all`,
+      `${FEISHU_API_URL}/drive/v1/files/upload_all`,
       form,
       {
         headers: {

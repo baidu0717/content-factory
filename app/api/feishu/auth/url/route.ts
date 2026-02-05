@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL
 
 /**
  * GET /api/feishu/auth/url

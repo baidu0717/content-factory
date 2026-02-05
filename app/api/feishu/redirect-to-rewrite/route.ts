@@ -4,7 +4,7 @@ import { getUserAccessToken, getAppAccessToken } from '@/lib/feishuAuth'
 const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
 const APP_TOKEN = process.env.FEISHU_DEFAULT_APP_TOKEN || ''
 const TABLE_ID = process.env.FEISHU_DEFAULT_TABLE_ID || ''
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL
 
 /**
  * GET /api/feishu/redirect-to-rewrite?record_id=xxx

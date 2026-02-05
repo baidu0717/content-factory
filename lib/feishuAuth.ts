@@ -124,7 +124,7 @@ export async function getUserAccessToken(): Promise<string> {
 
       // 检查是否是 refresh_token 过期或无效
       if (data.code === 10012 || data.code === 99991400 || data.msg?.includes('invalid') || data.msg?.includes('expired')) {
-        const errorMsg = `Refresh Token 已过期或无效，请重新授权。访问: ${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/feishu-auth`
+        const errorMsg = `Refresh Token 已过期或无效，请重新授权。访问: ${process.env.NEXT_PUBLIC_APP_URL}/feishu-auth`
         console.error('[飞书Auth] ❌', errorMsg)
         throw new Error(errorMsg)
       }

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
-const REDIRECT_URI = process.env.NEXT_PUBLIC_APP_URL
-  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/feishu/callback`
-  : 'http://localhost:3000/api/auth/feishu/callback'
+const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/feishu/callback`
 
 /**
  * GET /api/auth/login
