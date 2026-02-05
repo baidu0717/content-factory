@@ -74,8 +74,11 @@ export async function POST(request: NextRequest) {
           model: GEMINI_TEXT_MODEL,
           contents: titleContents,
           config: {
-            temperature: 0.9,
-            maxOutputTokens: 2000
+            temperature: 1.0,           // 提高到 1.0，增加创造性
+            topP: 0.95,                 // 增加输出多样性
+            topK: 40,                   // 扩大候选词范围
+            maxOutputTokens: 2000,
+            candidateCount: 1           // 生成1个候选（可以改为3，但会增加成本）
           }
         })
 
@@ -115,7 +118,9 @@ export async function POST(request: NextRequest) {
           model: GEMINI_TEXT_MODEL,
           contents: contentContents,
           config: {
-            temperature: 0.8,
+            temperature: 0.9,           // 提高创造性（正文保持稍低于标题）
+            topP: 0.95,
+            topK: 40,
             maxOutputTokens: 8192
           }
         })
