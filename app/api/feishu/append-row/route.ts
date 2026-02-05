@@ -49,6 +49,10 @@ async function downloadImage(imageUrl: string): Promise<Buffer> {
     return Buffer.from(response.data)
   } catch (error) {
     console.error('[图片下载] 下载失败:', error)
+    if (axios.isAxiosError(error)) {
+      console.error('[图片下载] 错误详情 - 状态码:', error.response?.status)
+      console.error('[图片下载] 错误详情 - 消息:', error.message)
+    }
     throw new Error(`下载图片失败: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
@@ -93,6 +97,8 @@ async function uploadImageToFeishu(
 
     if (data.code !== 0) {
       console.error('[飞书API] 上传图片失败:', data)
+      console.error('[飞书API] 错误代码:', data.code)
+      console.error('[飞书API] 错误消息:', data.msg)
       throw new Error(`上传图片失败: ${data.msg}`)
     }
 
@@ -100,6 +106,13 @@ async function uploadImageToFeishu(
     return data.data.file_token
   } catch (error) {
     console.error('[飞书API] 上传图片异常:', error)
+    if (axios.isAxiosError(error)) {
+      console.error('[飞书API] Axios 错误详情:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      })
+    }
     throw error
   }
 }
@@ -204,7 +217,10 @@ export async function POST(request: NextRequest) {
 
     // 下载并上传图片到飞书（并行处理）
     console.log('[飞书导出API] 开始并行处理图片...')
+    console.log('[飞书导出API] 原始图片数组:', images)
     const imagesToProcess = images.slice(0, 3).filter(Boolean)
+    console.log('[飞书导出API] 待处理图片数量:', imagesToProcess.length)
+    console.log('[飞书导出API] 待处理图片URL:', imagesToProcess)
 
     // 并行处理所有图片（下载+上传同时进行）
     const imagePromises = imagesToProcess.map(async (imageUrl, i) => {
@@ -226,6 +242,11 @@ export async function POST(request: NextRequest) {
     const fileTokens = results.filter((token): token is string => token !== null)
 
     console.log(`[飞书导出API] 成功上传 ${fileTokens.length}/${imagesToProcess.length} 张图片`)
+    console.log('[飞书导出API] 获得的 file_tokens:', fileTokens)
+
+    if (fileTokens.length === 0 && imagesToProcess.length > 0) {
+      console.error('[飞书导出API] ⚠️ 警告：所有图片上传都失败了！')
+    }
 
     // 清理话题标签：移除 [话题] 文本
     const cleanTags = (tags || '').replace(/\[话题\]/g, '').trim()
@@ -253,11 +274,27 @@ export async function POST(request: NextRequest) {
     if (typeof commentCount === 'number') recordFields['评论数'] = String(commentCount)
 
     // 添加图片附件字段（字段名必须与飞书表格完全一致）
-    if (fileTokens[0]) recordFields['封面'] = [{ file_token: fileTokens[0] }]
-    if (fileTokens[1]) recordFields['图片2'] = [{ file_token: fileTokens[1] }]
+    console.log('[飞书导出API] 开始设置图片字段...')
+    if (fileTokens[0]) {
+      recordFields['封面'] = [{ file_token: fileTokens[0] }]
+      console.log('[飞书导出API] ✅ 设置封面字段:', fileTokens[0])
+    } else {
+      console.log('[飞书导出API] ⚠️ 跳过封面字段（无 file_token）')
+    }
+
+    if (fileTokens[1]) {
+      recordFields['图片2'] = [{ file_token: fileTokens[1] }]
+      console.log('[飞书导出API] ✅ 设置图片2字段:', fileTokens[1])
+    } else {
+      console.log('[飞书导出API] ⚠️ 跳过图片2字段（无 file_token）')
+    }
+
     if (fileTokens.length > 2) {
       // 第3张及后续图片都放到"后续图片"字段
       recordFields['后续图片'] = fileTokens.slice(2).map(token => ({ file_token: token }))
+      console.log('[飞书导出API] ✅ 设置后续图片字段:', fileTokens.slice(2))
+    } else {
+      console.log('[飞书导出API] ⚠️ 跳过后续图片字段（图片数量 <= 2）')
     }
 
     console.log('[飞书导出API] 准备写入的字段:', JSON.stringify(recordFields, null, 2))
