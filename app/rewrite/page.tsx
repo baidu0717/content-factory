@@ -351,6 +351,11 @@ function RewritePageContent() {
   const [processingStep, setProcessingStep] = useState('')
   const [imageProgress, setImageProgress] = useState({ current: 0, total: 0 })
 
+  // 独立的按钮加载状态
+  const [isRewritingTitle, setIsRewritingTitle] = useState(false)
+  const [isRewritingContent, setIsRewritingContent] = useState(false)
+  const [isRewritingAll, setIsRewritingAll] = useState(false)
+
   // 复制状态
   const [copied, setCopied] = useState(false)
 
@@ -358,7 +363,7 @@ function RewritePageContent() {
   const handleRewriteTitle = useCallback(async () => {
     console.log('[改写标题] 开始改写标题')
     console.log('[改写标题] 当前标题:', editableTitle)
-    setProcessingStep('正在改写标题...')
+    setIsRewritingTitle(true)
     try {
       const response = await fetch('/api/xiaohongshu/rewrite', {
         method: 'POST',
@@ -384,9 +389,9 @@ function RewritePageContent() {
       console.error('改写标题失败:', error)
       alert('改写标题失败，请重试')
     } finally {
-      setProcessingStep('')
+      setIsRewritingTitle(false)
     }
-  }, [editableTitle, editableContent, editableTags, titlePrompt, createHistoryVersion])
+  }, [editableTitle, titlePrompt, editableContent, editableTags, createHistoryVersion])
 
   // ===== 一键改写全部（标题+正文） =====
   const handleRewriteAll = useCallback(async () => {
@@ -395,7 +400,7 @@ function RewritePageContent() {
     console.log('[一键改写] 当前正文长度:', editableContent?.length)
     console.log('[一键改写] 当前正文前100字:', editableContent?.substring(0, 100))
 
-    setProcessingStep('正在改写标题和正文...')
+    setIsRewritingAll(true)
     try {
       const response = await fetch('/api/xiaohongshu/rewrite', {
         method: 'POST',
@@ -431,7 +436,7 @@ function RewritePageContent() {
       console.error('一键改写失败:', error)
       alert('改写失败，请重试')
     } finally {
-      setProcessingStep('')
+      setIsRewritingAll(false)
     }
   }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, createHistoryVersion])
 
@@ -440,7 +445,7 @@ function RewritePageContent() {
     console.log('[改写正文] 开始改写正文')
     console.log('[改写正文] 当前正文长度:', editableContent?.length)
 
-    setProcessingStep('正在改写正文...')
+    setIsRewritingContent(true)
     try {
       const response = await fetch('/api/xiaohongshu/rewrite', {
         method: 'POST',
@@ -469,7 +474,7 @@ function RewritePageContent() {
       console.error('改写正文失败:', error)
       alert('改写失败，请重试')
     } finally {
-      setProcessingStep('')
+      setIsRewritingContent(false)
     }
   }, [editableTitle, editableContent, editableTags, contentPrompt, createHistoryVersion])
 
@@ -816,11 +821,11 @@ function RewritePageContent() {
                   <div className="flex justify-center">
                     <button
                       onClick={handleRewriteAll}
-                      disabled={!editableTitle || !editableContent || processingStep !== ''}
+                      disabled={!editableTitle || !editableContent || isRewritingAll}
                       className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:from-pink-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-lg font-medium"
                     >
                       <Wand2 className="w-4 h-4 mr-2" />
-                      一键改写全部
+                      {isRewritingAll ? '改写中...' : '一键改写全部'}
                     </button>
                   </div>
 
@@ -835,11 +840,11 @@ function RewritePageContent() {
                         </label>
                         <button
                           onClick={handleRewriteTitle}
-                          disabled={!editableTitle || processingStep !== ''}
+                          disabled={!editableTitle || isRewritingTitle}
                           className="px-3 py-1 text-xs bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                         >
                           <Wand2 className="w-3 h-3 mr-1" />
-                          改写标题
+                          {isRewritingTitle ? '改写中...' : '改写标题'}
                         </button>
                       </div>
                       <textarea
@@ -873,11 +878,11 @@ function RewritePageContent() {
                           )}
                           <button
                             onClick={handleRewriteContent}
-                            disabled={!editableContent || processingStep !== ''}
+                            disabled={!editableContent || isRewritingContent}
                             className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                           >
                             <Wand2 className="w-3 h-3 mr-1" />
-                            改写正文
+                            {isRewritingContent ? '改写中...' : '改写正文'}
                           </button>
                         </div>
                       </div>
