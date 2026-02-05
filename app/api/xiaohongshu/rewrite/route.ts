@@ -70,9 +70,9 @@ export async function POST(request: NextRequest) {
         const titleResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
           contents: titleContents,
-          config: {
+          generationConfig: {
             temperature: 0.9,  // 提高温度到0.9，增加创造性
-            maxOutputTokens: 500  // 增加到500，支持更长的标题
+            maxOutputTokens: 2000  // 增加到2000，确保不会被截断
           }
         })
 
@@ -111,9 +111,9 @@ export async function POST(request: NextRequest) {
         const contentResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
           contents: contentContents,
-          config: {
+          generationConfig: {
             temperature: 0.8,
-            maxOutputTokens: 4096  // 增加到4096，支持更长的内容
+            maxOutputTokens: 8192  // 增加到8192，支持更长的内容
           }
         })
 
