@@ -58,6 +58,36 @@ export async function GET(request: NextRequest) {
     console.log('[飞书回调] access_token 有效期:', expires_in, '秒')
     console.log('[飞书回调] refresh_token:', refresh_token)
 
+    // 自动更新 Vercel 环境变量（如果在生产环境）
+    const currentToken = process.env.FEISHU_REFRESH_TOKEN
+    if (refresh_token && refresh_token !== currentToken) {
+      console.log('[飞书回调] 检测到新的 refresh_token，准备自动更新...')
+
+      if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_TOKEN) {
+        console.log('[飞书回调] 生产环境，触发自动更新...')
+
+        // 异步调用更新 API，不等待结果
+        const updateUrl = 'https://content-factory-jade-nine.vercel.app/api/feishu/update-vercel-token'
+        fetch(updateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newRefreshToken: refresh_token })
+        }).then(res => res.json()).then(result => {
+          if (result.success) {
+            console.log('[飞书回调] ✅ 自动更新成功')
+          } else {
+            console.error('[飞书回调] ❌ 自动更新失败:', result.error)
+          }
+        }).catch(err => {
+          console.error('[飞书回调] ❌ 自动更新异常:', err)
+        })
+      } else {
+        console.log('[飞书回调] 非生产环境或未配置 VERCEL_TOKEN，请手动更新')
+      }
+    } else {
+      console.log('[飞书回调] Token 未变化，无需更新')
+    }
+
     // 重定向到结果页面，带上 refresh_token
     const resultUrl = new URL('/feishu-auth', request.url)
     resultUrl.searchParams.set('success', 'true')
