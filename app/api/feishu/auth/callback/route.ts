@@ -66,21 +66,24 @@ export async function GET(request: NextRequest) {
       if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_TOKEN) {
         console.log('[飞书回调] 生产环境，触发自动更新...')
 
-        // 异步调用更新 API，不等待结果
-        const updateUrl = 'https://content-factory-jade-nine.vercel.app/api/feishu/update-vercel-token'
-        fetch(updateUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ newRefreshToken: refresh_token })
-        }).then(res => res.json()).then(result => {
+        try {
+          const updateUrl = 'https://content-factory-jade-nine.vercel.app/api/feishu/update-vercel-token'
+          const updateRes = await fetch(updateUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newRefreshToken: refresh_token })
+          })
+
+          const result = await updateRes.json()
+
           if (result.success) {
-            console.log('[飞书回调] ✅ 自动更新成功')
+            console.log('[飞书回调] ✅ 自动更新成功，已触发部署')
           } else {
             console.error('[飞书回调] ❌ 自动更新失败:', result.error)
           }
-        }).catch(err => {
+        } catch (err) {
           console.error('[飞书回调] ❌ 自动更新异常:', err)
-        })
+        }
       } else {
         console.log('[飞书回调] 非生产环境或未配置 VERCEL_TOKEN，请手动更新')
       }
