@@ -60,7 +60,10 @@ export async function POST(request: NextRequest) {
           {
             role: 'user',
             parts: [{
-              text: `${titlePrompt}\n\n原标题：${title}\n\n请创作一个新标题：`
+              text: `${titlePrompt}
+原标题：${title}
+
+新标题：`
             }]
           }
         ]
