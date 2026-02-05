@@ -337,21 +337,25 @@ function RewritePageContent() {
   }, [editableTitle, editableContent, editableTags, uploadedFiles])
 
   // 提示词设置
-  const [titlePrompt, setTitlePrompt] = useState(`你是小红书爆款标题创作专家。请创作一个完全不同的新标题，要求：
-1) 不使用原标题的词汇和句式
-2) 使用数字、emoji或悬念手法
+  const [titlePrompt, setTitlePrompt] = useState(`你是小红书爆款标题创作专家。
+
+【重要】必须创作一个与原标题完全不同的新标题！严禁直接复制原标题！
+
+要求：
+1) 完全不使用原标题的任何词汇
+2) 必须使用数字、emoji或悬念手法
 3) 长度10-20字
-4) 只输出标题本身
+4) 只输出新标题，不要其他内容
 
 示例1：
-原标题：落地巴黎我懵了…
-新标题：💰第一次来巴黎，这3个坑千万别踩！
+原标题：周末去哪玩
+新标题：🔥3个超小众景点，人少景美还免费！
 
 示例2：
-原标题：今天分享一个好用的App
-新标题：🔥这个App我藏了2年，终于忍不住分享了！
+原标题：分享一个好物
+新标题：💰这个宝藏好物，我用了5年才敢推荐！
 
-现在轮到你了：`)
+现在轮到你创作：`)
 
   const [contentPrompt, setContentPrompt] = useState(`你是一个专业的内容创作者，擅长将内容改写为全新的、高质量的原创文章，同时保持核心观点和价值。
 
