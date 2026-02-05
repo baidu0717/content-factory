@@ -60,20 +60,7 @@ export async function POST(request: NextRequest) {
           {
             role: 'user',
             parts: [{
-              text: `${titlePrompt}
-
-示例1：
-原标题：落地巴黎我懵了…
-新标题：💰第一次来巴黎，这3个坑千万别踩！
-
-示例2：
-原标题：今天分享一个好用的App
-新标题：🔥这个App我藏了2年，终于忍不住分享了！
-
-现在轮到你了：
-原标题：${title}
-
-新标题：`
+              text: `${titlePrompt}\n\n原标题：${title}\n\n请创作一个新标题：`
             }]
           }
         ]
@@ -116,7 +103,7 @@ export async function POST(request: NextRequest) {
           {
             role: 'user',
             parts: [{
-              text: `你是一个专业的内容创作者，擅长将内容改写为全新的、高质量的原创文章，同时保持核心观点和价值。\n\n${contentPrompt}\n\n原正文：${content}`
+              text: `${contentPrompt}\n\n原正文：${content}\n\n请输出改写后的正文：`
             }]
           }
         ]

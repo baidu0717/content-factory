@@ -337,8 +337,22 @@ function RewritePageContent() {
   }, [editableTitle, editableContent, editableTags, uploadedFiles])
 
   // 提示词设置
-  const [titlePrompt, setTitlePrompt] = useState('你是小红书爆款标题创作专家。请创作一个完全不同的新标题，要求：1) 不使用原标题的词汇和句式 2) 使用数字、emoji或悬念手法 3) 长度10-20字 4) 只输出标题本身')
-  const [contentPrompt, setContentPrompt] = useState('请将以下小红书正文改写为全新的内容，保持核心观点但使用完全不同的表达方式、案例和结构。直接输出改写后的完整正文，不要有任何策略说明或解释，只输出正文内容本身：')
+  const [titlePrompt, setTitlePrompt] = useState(`你是小红书爆款标题创作专家。请创作一个完全不同的新标题，要求：
+1) 不使用原标题的词汇和句式
+2) 使用数字、emoji或悬念手法
+3) 长度10-20字
+4) 只输出标题本身
+
+参考示例：
+原标题：落地巴黎我懵了…
+新标题：💰第一次来巴黎，这3个坑千万别踩！
+
+原标题：今天分享一个好用的App
+新标题：🔥这个App我藏了2年，终于忍不住分享了！`)
+
+  const [contentPrompt, setContentPrompt] = useState(`你是一个专业的内容创作者，擅长将内容改写为全新的、高质量的原创文章，同时保持核心观点和价值。
+
+请将以下小红书正文改写为全新的内容，保持核心观点但使用完全不同的表达方式、案例和结构。直接输出改写后的完整正文，不要有任何策略说明或解释，只输出正文内容本身。`)
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
   const [imageStyle, setImageStyle] = useState('original')
 
