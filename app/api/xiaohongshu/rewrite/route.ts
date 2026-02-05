@@ -60,29 +60,12 @@ export async function POST(request: NextRequest) {
           {
             role: 'user',
             parts: [{
-              text: `你是一个专业的小红书爆款标题创作专家。
-
-任务：根据用户提供的标题，创作一个全新的、更吸引眼球的小红书标题。
-
-要求：
-1. 必须创作一个完全不同的标题，不能使用原标题的词汇和句式
-2. 保持原标题的核心话题和情感
-3. 使用小红书爆款标题的技巧（如：数字、emoji、反转、悬念等）
-4. 长度控制在10-20字
-5. 只输出新标题本身，不要有任何解释
-
-用户的改写要求：
-${titlePrompt}
-
-原标题：
-${title}
-
-请创作一个全新的标题：`
+              text: `${titlePrompt}\n\n原标题：${title}\n\n请创作一个新标题：`
             }]
           }
         ]
 
-        console.log('[内容改写] 发送到Gemini的完整提示:', titleContents[0].parts[0].text.substring(0, 200) + '...')
+        console.log('[内容改写] 发送到Gemini的完整提示:', titleContents[0].parts[0].text)
 
         const titleResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
