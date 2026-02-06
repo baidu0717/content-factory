@@ -306,43 +306,20 @@ function RewritePageContent() {
 
       const imageUrls = uploadResult.data.urls
       console.log('[发布] 图片上传完成，获得', imageUrls.length, '个URL')
-      setUploadProgress(50)
+      setUploadProgress(60)
 
-      // 步骤2：保存文章到数据库
-      setPublishStep('正在保存文章...')
+      // 步骤2：调用小红书发布API（直接发布，不保存到数据库）
+      setPublishStep('正在发布到小红书...')
+      setUploadProgress(75)
 
-      const saveResponse = await fetch('/api/articles', {
+      const publishResponse = await fetch('/api/xiaohongshu/publish-direct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editableTitle,
           content: editableContent,
-          tags: editableTags.split(/\s+/).filter(t => t.trim()),
-          images: imageUrls,
-          status: 'draft',
-          source: 'ai_rewrite',
-          wordCount: editableContent.replace(/\s/g, '').length,
-          readingTime: Math.ceil(editableContent.replace(/\s/g, '').length / 400)
+          images: imageUrls
         })
-      })
-
-      const saveResult = await saveResponse.json()
-
-      if (!saveResult.success) {
-        throw new Error(saveResult.error || '文章保存失败')
-      }
-
-      const articleId = saveResult.data.id
-      console.log('[发布] 文章已保存，ID:', articleId)
-      setUploadProgress(75)
-
-      // 步骤3：调用小红书发布API
-      setPublishStep('正在发布到小红书...')
-
-      const publishResponse = await fetch('/api/xiaohongshu/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articleId })
       })
 
       const publishResult = await publishResponse.json()
