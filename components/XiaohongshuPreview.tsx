@@ -43,16 +43,16 @@ export default function XiaohongshuPreview({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+        className="fixed inset-0 z-50 bg-black"
         onClick={onClose}
       >
-        {/* 手机屏幕容器 */}
+        {/* 主容器 */}
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-[428px] h-full max-h-[926px] bg-black rounded-[3rem] overflow-hidden shadow-2xl"
+          className="relative w-full h-full bg-black overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* iOS 顶部状态栏区域 */}
@@ -74,7 +74,7 @@ export default function XiaohongshuPreview({
           {/* 主内容区域 */}
           <div className="h-full flex flex-col overflow-hidden">
           {/* 图片区域 */}
-          <div className="relative bg-black flex items-center justify-center overflow-hidden" style={{ height: '60%' }}>
+          <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
             {images.length > 0 && (
               <>
                 <img
@@ -134,7 +134,7 @@ export default function XiaohongshuPreview({
           </div>
 
           {/* 内容卡片 */}
-          <div className="bg-white rounded-t-3xl overflow-y-auto" style={{ height: '40%' }}>
+          <div className="bg-white rounded-t-3xl overflow-y-auto flex-shrink-0 max-h-[50vh]">
             {/* 用户信息栏 */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-3">
