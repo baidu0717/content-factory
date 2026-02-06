@@ -306,25 +306,59 @@ function RewritePageContent() {
 
       const imageUrls = uploadResult.data.urls
       console.log('[发布] 图片上传完成，获得', imageUrls.length, '个URL')
-      setUploadProgress(100)
+      setUploadProgress(50)
 
-      // 步骤2：调用发布API
-      setPublishStep('正在发布到小红书...')
+      // 步骤2：保存文章到数据库
+      setPublishStep('正在保存文章...')
 
-      // 先创建临时文章记录
-      const article = {
-        title: editableTitle,
-        content: editableContent,
-        tags: editableTags.split(/\s+/).filter(t => t.trim()),
-        images: imageUrls
+      const saveResponse = await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editableTitle,
+          content: editableContent,
+          tags: editableTags.split(/\s+/).filter(t => t.trim()),
+          images: imageUrls,
+          status: 'draft',
+          source: 'ai_rewrite',
+          wordCount: editableContent.replace(/\s/g, '').length,
+          readingTime: Math.ceil(editableContent.replace(/\s/g, '').length / 400)
+        })
+      })
+
+      const saveResult = await saveResponse.json()
+
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || '文章保存失败')
       }
 
-      // 调用发布API（需要先保存到数据库）
-      // TODO: 这里需要先创建文章记录，然后调用发布API
-      console.log('[发布] 准备发布文章:', article)
+      const articleId = saveResult.data.id
+      console.log('[发布] 文章已保存，ID:', articleId)
+      setUploadProgress(75)
 
-      // 暂时直接显示成功（实际需要调用发布API）
-      alert('发布功能开发中...')
+      // 步骤3：调用小红书发布API
+      setPublishStep('正在发布到小红书...')
+
+      const publishResponse = await fetch('/api/xiaohongshu/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ articleId })
+      })
+
+      const publishResult = await publishResponse.json()
+
+      if (!publishResult.success) {
+        throw new Error(publishResult.error || '发布到小红书失败')
+      }
+
+      console.log('[发布] 发布成功:', publishResult.data)
+      setUploadProgress(100)
+
+      // 步骤4：显示二维码
+      setPublishResult({
+        qrCodeUrl: publishResult.data.qrCodeUrl,
+        noteId: publishResult.data.noteId
+      })
 
     } catch (error) {
       console.error('[发布] 发布失败:', error)
@@ -1184,6 +1218,67 @@ function RewritePageContent() {
         tags={editableTags}
         images={previewUrls}
       />
+
+      {/* 发布成功 - 二维码弹窗 */}
+      {publishResult && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4"
+          onClick={() => setPublishResult(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => setPublishResult(null)}
+              className="absolute top-4 right-4 w-8 h-8 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full flex items-center justify-center transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* 成功图标 */}
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                <Check className="w-8 h-8 text-green-600" />
+              </div>
+
+              <h3 className="text-xl font-bold text-gray-900 mb-2">发布成功！</h3>
+              <p className="text-sm text-gray-600 mb-6 text-center">
+                请使用手机微信扫描下方二维码，在手机端完成发布
+              </p>
+
+              {/* 二维码 */}
+              <div className="w-full max-w-xs aspect-square bg-gray-50 rounded-xl overflow-hidden border-2 border-gray-200 mb-4">
+                <img
+                  src={publishResult.qrCodeUrl}
+                  alt="发布二维码"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              {/* 笔记ID */}
+              {publishResult.noteId && (
+                <p className="text-xs text-gray-500 mb-4">
+                  笔记ID: {publishResult.noteId}
+                </p>
+              )}
+
+              {/* 关闭按钮 */}
+              <button
+                onClick={() => setPublishResult(null)}
+                className="w-full px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 transition-all shadow-lg"
+              >
+                完成
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   )
 }
