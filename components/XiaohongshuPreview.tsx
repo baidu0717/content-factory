@@ -43,16 +43,16 @@ export default function XiaohongshuPreview({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black"
+        className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
         onClick={onClose}
       >
-        {/* 主容器 */}
+        {/* 手机宽度容器 */}
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full h-full bg-black overflow-hidden"
+          className="relative w-full max-w-[428px] h-full bg-black overflow-hidden shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* iOS 顶部状态栏区域 */}
