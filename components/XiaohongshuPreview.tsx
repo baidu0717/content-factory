@@ -43,43 +43,44 @@ export default function XiaohongshuPreview({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black"
+        className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
         onClick={onClose}
       >
-        {/* iOS 顶部状态栏区域 */}
-        <div className="absolute top-0 left-0 right-0 h-11 bg-gradient-to-b from-black/50 to-transparent z-20 pointer-events-none" />
-
-        {/* 顶部操作栏 */}
-        <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 pt-3 pb-2">
-          <button
-            onClick={onClose}
-            className="w-9 h-9 bg-black/30 backdrop-blur-sm rounded-full flex items-center justify-center text-white"
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-          <button className="w-9 h-9 bg-black/30 backdrop-blur-sm rounded-full flex items-center justify-center text-white">
-            <MoreHorizontal className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* 主内容区域 */}
+        {/* 手机屏幕容器 */}
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="h-full flex flex-col overflow-hidden"
+          className="relative w-full max-w-[428px] h-full max-h-[926px] bg-black rounded-[3rem] overflow-hidden shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* iOS 顶部状态栏区域 */}
+          <div className="absolute top-0 left-0 right-0 h-11 bg-gradient-to-b from-black/50 to-transparent z-20 pointer-events-none" />
+
+          {/* 顶部操作栏 */}
+          <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 pt-3 pb-2">
+            <button
+              onClick={onClose}
+              className="w-9 h-9 bg-black/30 backdrop-blur-sm rounded-full flex items-center justify-center text-white"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button className="w-9 h-9 bg-black/30 backdrop-blur-sm rounded-full flex items-center justify-center text-white">
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* 主内容区域 */}
+          <div className="h-full flex flex-col overflow-hidden">
           {/* 图片区域 */}
-          <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
+          <div className="relative bg-black flex items-center justify-center overflow-hidden" style={{ height: '60%' }}>
             {images.length > 0 && (
               <>
                 <img
                   src={images[currentImageIndex]}
                   alt={`预览 ${currentImageIndex + 1}`}
-                  className="max-w-full object-contain"
-                  style={{ maxHeight: '55vh' }}
+                  className="w-full h-full object-contain"
                 />
 
                 {/* 图片计数器 */}
@@ -133,7 +134,7 @@ export default function XiaohongshuPreview({
           </div>
 
           {/* 内容卡片 */}
-          <div className="bg-white rounded-t-3xl flex-shrink-0 overflow-y-auto" style={{ maxHeight: '45vh' }}>
+          <div className="bg-white rounded-t-3xl overflow-y-auto" style={{ height: '40%' }}>
             {/* 用户信息栏 */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-3">
@@ -224,6 +225,7 @@ export default function XiaohongshuPreview({
                 </button>
               </div>
             </div>
+          </div>
           </div>
         </motion.div>
       </motion.div>
