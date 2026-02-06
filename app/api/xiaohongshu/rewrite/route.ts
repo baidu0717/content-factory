@@ -56,29 +56,24 @@ export async function POST(request: NextRequest) {
       console.log('[内容改写] 标题提示词:', titlePrompt.substring(0, 100) + '...')
       console.log('[内容改写] 原标题:', title)
       try {
-        const titleContents = [
-          {
-            role: 'user',
-            parts: [{
-              text: `${titlePrompt}
+        // 构建完整的提示词
+        const fullPrompt = `${titlePrompt}
+
 原标题：${title}
 
 新标题：`
-            }]
-          }
-        ]
 
-        console.log('[内容改写] 发送到Gemini的完整提示:', titleContents[0].parts[0].text)
+        console.log('[内容改写] 发送到Gemini的完整提示:', fullPrompt)
 
         const titleResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
-          contents: titleContents,
+          contents: fullPrompt,         // 直接传字符串，而不是复杂对象
           config: {
             temperature: 1.0,           // 提高到 1.0，增加创造性
             topP: 0.95,                 // 增加输出多样性
             topK: 40,                   // 扩大候选词范围
-            maxOutputTokens: 2000,
-            candidateCount: 1           // 生成1个候选（可以改为3，但会增加成本）
+            maxOutputTokens: 2000
+            // 移除 candidateCount - 可能导致问题
           }
         })
 
@@ -105,18 +100,16 @@ export async function POST(request: NextRequest) {
     if (content && contentPrompt) {
       console.log('[内容改写] 正在改写正文...')
       try {
-        const contentContents = [
-          {
-            role: 'user',
-            parts: [{
-              text: `${contentPrompt}\n\n原正文：${content}\n\n请输出改写后的正文：`
-            }]
-          }
-        ]
+        // 构建完整的提示词
+        const fullContentPrompt = `${contentPrompt}
+
+原正文：${content}
+
+请输出改写后的正文：`
 
         const contentResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,
-          contents: contentContents,
+          contents: fullContentPrompt,  // 直接传字符串
           config: {
             temperature: 0.9,           // 提高创造性（正文保持稍低于标题）
             topP: 0.95,
