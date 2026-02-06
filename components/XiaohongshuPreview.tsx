@@ -63,7 +63,7 @@ export default function XiaohongshuPreview({
               <div className="w-8 h-8 bg-gradient-to-br from-pink-400 to-red-400 rounded-full flex items-center justify-center text-white text-xs font-bold">
                 A
               </div>
-              <span className="text-sm font-semibold text-gray-900 truncate">{title}</span>
+              <span className="text-sm font-semibold text-gray-900 truncate">AI 创作者</span>
             </div>
             <button className="p-1">
               <MoreHorizontal className="w-6 h-6 text-gray-900" />
@@ -73,13 +73,13 @@ export default function XiaohongshuPreview({
           {/* 可滚动内容区域 */}
           <div className="flex-1 overflow-y-auto">
             {/* 图片区域 */}
-            <div className="relative w-full bg-black" style={{ aspectRatio: '1/1' }}>
+            <div className="relative w-full bg-black" style={{ aspectRatio: '3/4' }}>
               {images.length > 0 && (
                 <>
                   <img
                     src={images[currentImageIndex]}
                     alt={`预览 ${currentImageIndex + 1}`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
 
                   {/* 图片计数器 */}
