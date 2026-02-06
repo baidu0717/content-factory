@@ -4,17 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard,
-  Search,
-  PenTool,
   Send,
-  Settings,
-  BarChart3,
-  FileText,
   Zap,
   Menu,
   X,
-  Clock,
   Sparkles,
   Image,
   Database,
@@ -23,24 +16,6 @@ import {
 } from 'lucide-react'
 
 const menuItems = [
-  {
-    href: '/',
-    label: '仪表盘',
-    icon: LayoutDashboard,
-    description: '总览和数据统计'
-  },
-  {
-    href: '/analysis',
-    label: '选题分析',
-    icon: Search,
-    description: '关键词分析与洞察'
-  },
-  {
-    href: '/create',
-    label: '内容创作',
-    icon: PenTool,
-    description: 'AI智能创作'
-  },
   {
     href: '/rewrite',
     label: '小红书复刻',
@@ -76,18 +51,6 @@ const menuItems = [
     label: '发布管理',
     icon: Send,
     description: '文章管理与发布'
-  },
-  {
-    href: '/monitoring',
-    label: '定时监控',
-    icon: Clock,
-    description: '自动分析与推送'
-  },
-  {
-    href: '/settings',
-    label: '设置',
-    icon: Settings,
-    description: 'API配置与系统设置'
   },
 ]
 
@@ -184,29 +147,6 @@ export default function Sidebar() {
           </ul>
         </nav>
 
-        {/* 底部信息 */}
-        <div className="p-4 border-t border-white/50">
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-4">
-            <div className="flex items-center space-x-2 text-white mb-2">
-              <BarChart3 className="w-5 h-5" />
-              <span className="font-semibold">今日统计</span>
-            </div>
-            <div className="space-y-1">
-              <div className="flex justify-between text-white/90 text-sm">
-                <span>分析任务</span>
-                <span className="font-semibold">12</span>
-              </div>
-              <div className="flex justify-between text-white/90 text-sm">
-                <span>生成文章</span>
-                <span className="font-semibold">8</span>
-              </div>
-              <div className="flex justify-between text-white/90 text-sm">
-                <span>已发布</span>
-                <span className="font-semibold">5</span>
-              </div>
-            </div>
-          </div>
-        </div>
       </aside>
     </>
   )
