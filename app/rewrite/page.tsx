@@ -264,6 +264,41 @@ function RewritePageContent() {
     console.log('[图片删除] 删除第', index + 1, '张图片，剩余', newFiles.length, '张')
   }, [uploadedFiles, previewUrls])
 
+  // ===== 拖拽排序图片 =====
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+
+  const handleDragStart = useCallback((index: number) => {
+    setDraggedIndex(index)
+    console.log('[拖拽] 开始拖拽图片', index + 1)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === index) return
+
+    // 交换图片位置
+    const newFiles = [...uploadedFiles]
+    const newUrls = [...previewUrls]
+
+    const draggedFile = newFiles[draggedIndex]
+    const draggedUrl = newUrls[draggedIndex]
+
+    newFiles.splice(draggedIndex, 1)
+    newUrls.splice(draggedIndex, 1)
+
+    newFiles.splice(index, 0, draggedFile)
+    newUrls.splice(index, 0, draggedUrl)
+
+    setUploadedFiles(newFiles)
+    setPreviewUrls(newUrls)
+    setDraggedIndex(index)
+  }, [draggedIndex, uploadedFiles, previewUrls])
+
+  const handleDragEnd = useCallback(() => {
+    console.log('[拖拽] 拖拽结束')
+    setDraggedIndex(null)
+  }, [])
+
   // ===== 清理 URL 对象 =====
   useEffect(() => {
     return () => {
@@ -748,16 +783,31 @@ function RewritePageContent() {
                   {previewUrls.length > 0 && (
                     <div className="grid grid-cols-3 gap-2 mt-4">
                       {previewUrls.map((url, index) => (
-                        <div key={index} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
-                          <img src={url} alt={`预览 ${index + 1}`} className="w-full h-full object-cover" />
+                        <div
+                          key={index}
+                          draggable
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className={`relative aspect-square rounded-lg overflow-hidden border border-gray-200 group cursor-move transition-all ${
+                            draggedIndex === index ? 'opacity-50 scale-95' : 'opacity-100 scale-100'
+                          }`}
+                        >
+                          <img src={url} alt={`预览 ${index + 1}`} className="w-full h-full object-cover pointer-events-none" />
                           <button
                             onClick={() => handleRemoveImage(index)}
-                            className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
                           >
                             <X className="w-4 h-4" />
                           </button>
                           <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs py-1 text-center">
                             {index + 1}
+                          </div>
+                          {/* 拖拽指示器 */}
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 pointer-events-none">
+                            <div className="text-white text-xs bg-black bg-opacity-60 px-2 py-1 rounded">
+                              拖动排序
+                            </div>
                           </div>
                         </div>
                       ))}
