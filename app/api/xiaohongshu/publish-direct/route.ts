@@ -116,21 +116,20 @@ export async function POST(req: NextRequest) {
 
     console.log('\n✅ 发布成功!')
     console.log('总耗时:', totalDuration + 'ms')
-    console.log('二维码URL:', responseData.data?.xiaohongshu_qr_image_url)
-    console.log('发布URL:', responseData.data?.publish_url)
+    console.log('二维码:', responseData.data?.qrcode ? '已返回(base64)' : '未返回')
+    console.log('发布URL:', responseData.data?.url)
     console.log('='.repeat(80))
 
-    // 返回成功结果
+    // 返回成功结果（映射正确的字段名）
     return NextResponse.json({
       success: true,
       data: {
         id: responseData.data?.id,
-        noteId: responseData.data?.note_id,
-        title: responseData.data?.title,
-        qrCodeUrl: responseData.data?.xiaohongshu_qr_image_url,
-        publishUrl: responseData.data?.publish_url,
-        coverImage: responseData.data?.cover_image,
-        createdAt: responseData.data?.created_at
+        noteId: responseData.data?.id,  // MyAIBot 返回的是 id，不是 note_id
+        title: title,
+        qrCodeUrl: responseData.data?.qrcode,  // 正确的字段名是 qrcode (base64格式)
+        publishUrl: responseData.data?.url,    // 正确的字段名是 url
+        createdAt: Date.now()
       },
       message: '发布成功！请扫描二维码在手机端完成发布'
     })
