@@ -68,17 +68,18 @@ export default function XiaohongshuPreview({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="h-full flex flex-col"
+          className="h-full flex flex-col overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* 图片区域 */}
-          <div className="relative flex-1 bg-black flex items-center justify-center">
+          <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
             {images.length > 0 && (
               <>
                 <img
                   src={images[currentImageIndex]}
                   alt={`预览 ${currentImageIndex + 1}`}
-                  className="max-h-full max-w-full object-contain"
+                  className="max-w-full object-contain"
+                  style={{ maxHeight: '55vh' }}
                 />
 
                 {/* 图片计数器 */}
@@ -132,7 +133,7 @@ export default function XiaohongshuPreview({
           </div>
 
           {/* 内容卡片 */}
-          <div className="bg-white rounded-t-3xl max-h-[45vh] overflow-y-auto">
+          <div className="bg-white rounded-t-3xl flex-shrink-0 overflow-y-auto" style={{ maxHeight: '45vh' }}>
             {/* 用户信息栏 */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-3">
