@@ -89,9 +89,9 @@ export default function Sidebar() {
         className={`
           fixed inset-y-0 left-0 z-50
           bg-white/40 backdrop-blur-xl border-r border-white/50 flex flex-col
-          transform transition-all duration-300 ease-in-out
-          ${isMobileMenuOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'}
-          ${isHovered ? 'lg:w-64' : 'lg:w-16'}
+          w-64 transform transition-all duration-300 ease-in-out
+          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isHovered ? 'lg:translate-x-0' : 'lg:-translate-x-full'}
         `}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -102,7 +102,7 @@ export default function Sidebar() {
             <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
               <Zap className="w-6 h-6 text-white" />
             </div>
-            <div className={`transition-all duration-300 ${isHovered ? 'opacity-100 w-auto' : 'opacity-0 w-0 lg:opacity-0 lg:w-0'}`}>
+            <div>
               <h1 className="text-xl font-bold text-gray-900 whitespace-nowrap">内容工厂</h1>
               <p className="text-xs text-gray-500 whitespace-nowrap">智能创作平台</p>
             </div>
@@ -129,12 +129,10 @@ export default function Sidebar() {
                         ? 'bg-blue-50 text-blue-600 border-l-4 border-blue-600'
                         : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent'
                       }
-                      ${!isHovered ? 'lg:justify-center' : ''}
                     `}
-                    title={!isHovered ? item.label : ''}
                   >
                     <Icon className="w-5 h-5 flex-shrink-0" />
-                    <div className={`transition-all duration-300 ${isHovered ? 'opacity-100 w-auto' : 'opacity-0 w-0 lg:opacity-0 lg:w-0'}`}>
+                    <div>
                       <p className="font-medium whitespace-nowrap">{item.label}</p>
                       <p className={`text-xs whitespace-nowrap ${isActive ? 'text-blue-500' : 'text-gray-500'}`}>
                         {item.description}

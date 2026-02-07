@@ -935,12 +935,14 @@ function RewritePageContent() {
                           {isRewritingTitle ? '改写中...' : '改写标题'}
                         </button>
                       </div>
-                      <textarea
+                      <XHSEmojiTextEditor
                         value={editableTitle}
-                        onChange={(e) => setEditableTitle(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 resize-none"
-                        rows={2}
+                        onChange={setEditableTitle}
                         placeholder="输入标题..."
+                        rows={2}
+                        maxLength={50}
+                        showEmojiButton={true}
+                        showStats={false}
                       />
                     </div>
 
@@ -1017,16 +1019,15 @@ function RewritePageContent() {
                         </motion.div>
                       )}
 
-                      <textarea
+                      <XHSEmojiTextEditor
                         value={editableContent}
-                        onChange={(e) => setEditableContent(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[400px] max-h-[800px]"
-                        rows={20}
-                        placeholder="输入正文..."
+                        onChange={setEditableContent}
+                        placeholder="输入正文，可以添加小红书表情..."
+                        rows={14}
+                        maxLength={1000}
+                        showEmojiButton={true}
+                        showStats={true}
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        💡 提示：编辑框支持手动调整高度，拖拽右下角可调整
-                      </p>
                     </div>
 
                     {/* 话题标签编辑框 */}
