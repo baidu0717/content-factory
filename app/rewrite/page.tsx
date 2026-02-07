@@ -753,9 +753,9 @@ function RewritePageContent() {
         <p className="text-gray-500 mt-1">一键复刻小红书笔记，AI智能改写标题、正文并复刻图片</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 左侧：输入和设置区域 */}
-        <div className="lg:col-span-1 space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* 图片上传和设置区域 */}
+        <div className="space-y-6">
           {/* 图片上传 */}
           {pageState !== 'empty' && (
             <motion.div
@@ -874,9 +874,9 @@ function RewritePageContent() {
 
         </div>
 
-        {/* 右侧：预览区域 */}
-        <div className="lg:col-span-2">
-          <GlassCard className="p-6 min-h-[600px]">
+        {/* 内容编辑区域 */}
+        <div>
+          <GlassCard className="p-6">
             {/* 空白状态 */}
             {pageState === 'empty' && (
               <div className="flex flex-col items-center justify-center h-full py-20">
@@ -1064,18 +1064,7 @@ function RewritePageContent() {
                   )}
 
                   {/* 操作按钮 */}
-                  <div className="pt-4 border-t border-gray-200 space-y-3">
-                    {/* 主要操作：添加表情 */}
-                    <button
-                      onClick={() => setIsEditingEmoji(true)}
-                      disabled={!editableTitle && !editableContent}
-                      className="w-full px-6 py-4 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-center text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Smile className="w-6 h-6 mr-2" />
-                      添加小红书表情
-                    </button>
-
-                    {/* 其他操作 */}
+                  <div className="pt-4 border-t border-gray-200">
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         onClick={() => setShowPreview(true)}
@@ -1234,17 +1223,7 @@ function RewritePageContent() {
                   </div>
 
                   {/* 操作按钮 */}
-                  <div className="space-y-3 pt-4 border-t border-gray-200">
-                    {/* 主要操作：添加表情 */}
-                    <button
-                      onClick={() => setIsEditingEmoji(true)}
-                      className="w-full px-6 py-4 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-center text-lg"
-                    >
-                      <Smile className="w-6 h-6 mr-2" />
-                      添加小红书表情
-                    </button>
-
-                    {/* 其他操作 */}
+                  <div className="pt-4 border-t border-gray-200">
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         onClick={handleSave}

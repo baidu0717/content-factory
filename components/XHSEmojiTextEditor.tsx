@@ -101,28 +101,17 @@ export default function XHSEmojiTextEditor({
         </div>
       )}
 
-      {/* 文本编辑区 */}
-      <div className="relative">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          rows={rows}
-          maxLength={maxLength}
-          className="w-full px-4 py-3 pr-32 border-2 border-gray-200 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all resize-none font-['PingFang_SC'] text-gray-800 leading-relaxed"
-        />
-
-        {/* 表情按钮 */}
+      {/* 工具栏 */}
+      <div className="flex items-center gap-2 p-2 bg-gray-50 border-2 border-gray-200 border-b-0 rounded-t-xl">
         {showEmojiButton && (
-          <div ref={emojiButtonRef} className="absolute bottom-3 right-3">
+          <div ref={emojiButtonRef} className="relative">
             <button
               type="button"
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg hover:from-red-600 hover:to-pink-600 transition-all shadow-md hover:shadow-lg text-sm font-medium flex items-center gap-2"
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors"
+              title="添加表情"
             >
-              <span className="text-lg">🥔</span>
-              <span>小红书表情</span>
+              <span className="text-lg">😊</span>
             </button>
 
             {/* 表情选择器 */}
@@ -136,6 +125,19 @@ export default function XHSEmojiTextEditor({
             </AnimatePresence>
           </div>
         )}
+      </div>
+
+      {/* 文本编辑区 */}
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={rows}
+          maxLength={maxLength}
+          className="w-full px-4 py-3 border-2 border-gray-200 border-t-0 rounded-b-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all resize-none font-['PingFang_SC'] text-gray-800 leading-relaxed"
+        />
       </div>
 
       {/* 使用提示和预览 */}
