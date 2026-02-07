@@ -54,6 +54,12 @@ export default function Sidebar() {
 
   return (
     <>
+      {/* 桌面端触发区域 - 鼠标移到左侧时显示侧边栏 */}
+      <div
+        className="hidden lg:block fixed left-0 top-0 bottom-0 w-4 z-40 hover:bg-transparent"
+        onMouseEnter={() => setIsHovered(true)}
+      />
+
       {/* 移动端顶部导航栏 */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white/40 backdrop-blur-xl border-b border-white/50 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">

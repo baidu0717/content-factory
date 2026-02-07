@@ -102,7 +102,7 @@ export default function XHSEmojiTextEditor({
       )}
 
       {/* 工具栏 */}
-      <div className="flex items-center gap-2 p-2 bg-gray-50 border-2 border-gray-200 border-b-0 rounded-t-xl">
+      <div className="flex items-center justify-end gap-2 p-2 bg-gray-50 border-2 border-gray-200 border-b-0 rounded-t-xl">
         {showEmojiButton && (
           <div ref={emojiButtonRef} className="relative">
             <button
@@ -140,43 +140,6 @@ export default function XHSEmojiTextEditor({
         />
       </div>
 
-      {/* 使用提示和预览 */}
-      <div className="space-y-2">
-        {/* 快捷提示 */}
-        {showEmojiButton && !stats.hasEmoji && (
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <span>💡</span>
-            <span>提示：使用小红书官方表情可以让你的笔记更生动，提升互动率</span>
-          </div>
-        )}
-
-        {/* 表情预览 */}
-        {stats.hasEmoji && (
-          <div className="p-3 bg-gradient-to-r from-red-50 to-pink-50 rounded-xl border border-red-100">
-            <div className="flex items-start gap-2">
-              <span className="text-sm">🎨</span>
-              <div className="flex-1">
-                <p className="text-xs font-medium text-gray-700 mb-2">
-                  已添加的表情（共 {stats.emojis.length} 个）：
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {stats.emojis.map((code, index) => (
-                    <span
-                      key={index}
-                      className="px-2 py-1 bg-white text-xs text-red-600 font-mono rounded border border-red-200"
-                    >
-                      {code}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-[11px] text-gray-500 mt-2">
-                  ✓ 这些表情在小红书 app 中会自动显示为可爱的图片
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   )
 }
