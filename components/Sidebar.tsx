@@ -11,8 +11,7 @@ import {
   Sparkles,
   Image,
   Database,
-  Target,
-  Link as LinkIcon
+  Target
 } from 'lucide-react'
 
 const menuItems = [
@@ -33,12 +32,6 @@ const menuItems = [
     label: '批量采集',
     icon: Target,
     description: '关键词批量采集笔记'
-  },
-  {
-    href: '/generate-links',
-    label: '生成复刻链接',
-    icon: LinkIcon,
-    description: '为飞书笔记生成复刻链接'
   },
   {
     href: '/image-generate',
