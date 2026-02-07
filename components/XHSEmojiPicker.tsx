@@ -39,40 +39,37 @@ export default function XHSEmojiPicker({ onEmojiSelect, onClose }: XHSEmojiPicke
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: -10 }}
       transition={{ duration: 0.15 }}
-      className="absolute z-50 mt-2 w-[480px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
+      className="absolute z-50 mt-2 w-[320px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden"
     >
       {/* 标题栏 */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-red-50 to-pink-50 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🥔</span>
-          <h3 className="text-sm font-semibold text-gray-800">小红书官方表情</h3>
-        </div>
+      <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-red-50 to-pink-50 border-b border-gray-200">
+        <h3 className="text-xs font-semibold text-gray-800">小红薯表情</h3>
         <button
           onClick={onClose}
-          className="text-gray-500 hover:text-gray-700 transition-colors"
+          className="text-gray-400 hover:text-gray-600 transition-colors text-sm"
         >
           ✕
         </button>
       </div>
 
       {/* 搜索框 */}
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+      <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
         <input
           type="text"
           value={searchKeyword}
           onChange={(e) => setSearchKeyword(e.target.value)}
-          placeholder="搜索表情... (如：萌、笑、赞)"
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-pink-400 focus:ring-2 focus:ring-pink-100 transition-all"
+          placeholder="搜索表情..."
+          className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:border-pink-400 focus:ring-1 focus:ring-pink-100 transition-all"
         />
       </div>
 
       {/* 分类标签 */}
       {!searchKeyword && (
-        <div className="flex overflow-x-auto px-2 py-2 bg-gray-50 border-b border-gray-200 scrollbar-hide">
+        <div className="flex overflow-x-auto px-2 py-1.5 bg-gray-50 border-b border-gray-200 scrollbar-hide">
           <button
             onClick={() => setActiveCategory('hot')}
             className={`
-              flex-shrink-0 px-3 py-1.5 mx-1 text-xs font-medium rounded-full transition-all
+              flex-shrink-0 px-2 py-1 mx-0.5 text-[10px] font-medium rounded-full transition-all
               ${activeCategory === 'hot'
                 ? 'bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-sm'
                 : 'bg-white text-gray-600 hover:bg-gray-100'
@@ -86,7 +83,7 @@ export default function XHSEmojiPicker({ onEmojiSelect, onClose }: XHSEmojiPicke
               key={key}
               onClick={() => setActiveCategory(key)}
               className={`
-                flex-shrink-0 px-3 py-1.5 mx-1 text-xs font-medium rounded-full transition-all
+                flex-shrink-0 px-2 py-1 mx-0.5 text-[10px] font-medium rounded-full transition-all
                 ${activeCategory === key
                   ? 'bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-sm'
                   : 'bg-white text-gray-600 hover:bg-gray-100'
@@ -100,7 +97,7 @@ export default function XHSEmojiPicker({ onEmojiSelect, onClose }: XHSEmojiPicke
       )}
 
       {/* 表情列表 */}
-      <div className="p-4 max-h-80 overflow-y-auto">
+      <div className="p-2 max-h-64 overflow-y-auto">
         {displayEmojis.length > 0 ? (
           <AnimatePresence mode="wait">
             <motion.div
@@ -109,7 +106,7 @@ export default function XHSEmojiPicker({ onEmojiSelect, onClose }: XHSEmojiPicke
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="grid grid-cols-4 gap-2"
+              className="grid grid-cols-8 gap-1"
             >
               {displayEmojis.map((emoji, index) => (
                 <motion.button
@@ -118,17 +115,18 @@ export default function XHSEmojiPicker({ onEmojiSelect, onClose }: XHSEmojiPicke
                     onEmojiSelect(emoji)
                     onClose()
                   }}
-                  whileHover={{ scale: 1.05, y: -2 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-gradient-to-br hover:from-red-50 hover:to-pink-50 transition-all group"
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  className="flex flex-col items-center justify-center p-1.5 rounded-lg hover:bg-gray-100 transition-all group"
+                  title={emoji.name}
                 >
                   {/* 表情代码显示 */}
-                  <div className="text-xl mb-1 group-hover:scale-110 transition-transform">
+                  <div className="text-base group-hover:scale-110 transition-transform">
                     {emoji.imageUrl ? (
                       <img
                         src={emoji.imageUrl}
                         alt={emoji.name}
-                        className="w-8 h-8 object-contain"
+                        className="w-6 h-6 object-contain"
                         onError={(e) => {
                           // 如果图片加载失败，显示文字
                           e.currentTarget.style.display = 'none'
@@ -136,49 +134,27 @@ export default function XHSEmojiPicker({ onEmojiSelect, onClose }: XHSEmojiPicke
                         }}
                       />
                     ) : null}
-                    <span className={emoji.imageUrl ? 'hidden' : ''}>
+                    <span className={emoji.imageUrl ? 'hidden' : 'text-xs'}>
                       {emoji.name}
                     </span>
                   </div>
 
-                  {/* 表情名称 */}
-                  <span className="text-xs text-gray-600 text-center leading-tight">
+                  {/* 表情名称 - 只在hover时显示 */}
+                  <span className="text-[9px] text-gray-600 text-center leading-tight mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     {emoji.name}
                   </span>
-
-                  {/* 标签提示 */}
-                  {emoji.tags && emoji.tags.length > 0 && (
-                    <span className="text-[10px] text-gray-400 mt-0.5">
-                      {emoji.tags[0]}
-                    </span>
-                  )}
                 </motion.button>
               ))}
             </motion.div>
           </AnimatePresence>
         ) : (
-          <div className="text-center py-8 text-gray-400">
-            <div className="text-4xl mb-2">🔍</div>
-            <p className="text-sm">没有找到相关表情</p>
-            <p className="text-xs mt-1">试试其他关键词吧</p>
+          <div className="text-center py-6 text-gray-400">
+            <div className="text-2xl mb-1">🔍</div>
+            <p className="text-xs">没有找到相关表情</p>
           </div>
         )}
       </div>
 
-      {/* 使用提示 */}
-      <div className="px-4 py-3 bg-gradient-to-r from-red-50 to-pink-50 border-t border-gray-200">
-        <div className="flex items-start gap-2 text-xs text-gray-600">
-          <span className="text-sm">💡</span>
-          <div className="flex-1">
-            <p className="font-medium text-gray-700 mb-1">使用说明：</p>
-            <ul className="space-y-1 text-[11px]">
-              <li>• 点击表情会插入代码（如 [萌萌哒R]）到文本中</li>
-              <li>• 这些代码在<span className="font-semibold text-red-500">小红书 app 中会自动显示为表情图片</span></li>
-              <li>• 网页预览时显示为文本代码，发布后在 app 中显示为图片</li>
-            </ul>
-          </div>
-        </div>
-      </div>
     </motion.div>
   )
 }
