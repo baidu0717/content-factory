@@ -1031,7 +1031,7 @@ function RewritePageContent() {
                   </div>
 
                   {/* 原始图片 */}
-                  {originalNote.images.length > 0 && (
+                  {originalNote && originalNote.images.length > 0 && (
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
                         <ImageIcon className="w-5 h-5 mr-2 text-purple-600" />
