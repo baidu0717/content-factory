@@ -56,8 +56,19 @@ export async function POST(request: NextRequest) {
       console.log('[内容改写] 标题提示词:', titlePrompt.substring(0, 100) + '...')
       console.log('[内容改写] 原标题:', title)
       try {
+        // 小红书标题表情指南
+        const titleEmojiGuide = `
+提示：可以在标题中适当添加小红书表情，但要注意：
+- 标题建议 0-2 个表情
+- 常用表情：[火R] [炸裂R] [赞R] [萌萌哒R] [笑哭R] [派对R]
+- 表情位置：建议在标题末尾或关键词后
+- 示例：这个宝藏好物太好用了[笑哭R] | 3个超小众景点[火R]人少景美
+`
+
         // 构建完整的提示词
         const fullPrompt = `${titlePrompt}
+
+${titleEmojiGuide}
 
 原标题：${title}
 
@@ -100,12 +111,44 @@ export async function POST(request: NextRequest) {
     if (content && contentPrompt) {
       console.log('[内容改写] 正在改写正文...')
       try {
+        // 小红书表情库（自动添加模式）
+        const emojiGuide = `
+【重要】在改写后的文本中，在合适的位置添加小红书官方表情代码，让内容更生动有趣。
+
+小红书表情格式：[表情名R]
+
+常用表情列表：
+1. 表情类：[萌萌哒R] [哈哈R] [笑哭R] [害羞R] [微笑R] [偷笑R] [大笑R]
+2. 手势类：[比心R] [点赞R] [赞R] [加油R] [好的R] [飞吻R] [笔芯R]
+3. 动作类：[吃瓜R] [冲鸭R] [打卡R] [派对R] [暗中观察R] [拿走R]
+4. 强调类：[惊讶R] [思考R] [疑问R] [炸裂R] [酷盖R]
+
+使用原则（必须遵守）：
+1. 每段建议 1-2 个表情，全文 5-8 个表情
+2. 表情要与内容相关，不要随意堆砌
+3. 在关键位置使用：
+   - 开头：吸引注意（[派对R] [炸裂R]）
+   - 重点句：强调信息（[笑哭R] [赞R] [萌萌哒R]）
+   - 结尾：行动号召（[拿走R] [比心R] [冲鸭R]）
+4. 表情前后不需要空格，直接紧跟文字
+
+正确示例：
+"这款面膜真的太好用了[笑哭R]用了一个月皮肤水嫩嫩的[萌萌哒R]姐妹们快囤货[拿走R]"
+"这个小众景点人少景美[派对R]拍照超出片[炸裂R]周末约起来[冲鸭R]"
+
+错误示例（不要这样）：
+"这个好物 [火R] [火R] [火R] 真的很不错"  ❌ 不要堆砌同一个表情
+"今天天气不错[萌萌哒R]"  ❌ 表情与内容不匹配
+`
+
         // 构建完整的提示词
         const fullContentPrompt = `${contentPrompt}
 
+${emojiGuide}
+
 原正文：${content}
 
-请输出改写后的正文：`
+请输出改写后的正文（记得添加小红书表情）：`
 
         const contentResponse = await geminiClient.models.generateContent({
           model: GEMINI_TEXT_MODEL,

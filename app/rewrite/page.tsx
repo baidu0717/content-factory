@@ -21,11 +21,14 @@ import {
   Download,
   ExternalLink,
   Info,
-  X
+  X,
+  Smile
 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import GlassCard from '@/components/GlassCard'
 import XiaohongshuPreview from '@/components/XiaohongshuPreview'
+import XHSEmojiTextEditor from '@/components/XHSEmojiTextEditor'
+import { recordEmojiUsage } from '@/lib/emoji-learning'
 
 // 状态类型定义
 type PageState = 'empty' | 'parsed' | 'processing' | 'completed'
@@ -151,6 +154,9 @@ function RewritePageContent() {
     qrCodeUrl: string
     noteId: string
   } | null>(null)
+
+  // 表情编辑模式
+  const [isEditingEmoji, setIsEditingEmoji] = useState(false)
 
   // 监听 editableContent 变化
   useEffect(() => {
@@ -1057,33 +1063,54 @@ function RewritePageContent() {
                     </div>
                   )}
 
-                  {/* 预览和发布按钮 */}
-                  <div className="pt-4 border-t border-gray-200 flex gap-3">
+                  {/* 操作按钮 */}
+                  <div className="pt-4 border-t border-gray-200 space-y-3">
+                    {/* 主要操作：添加表情 */}
                     <button
-                      onClick={() => setShowPreview(true)}
-                      disabled={!editableTitle || !editableContent || previewUrls.length === 0}
-                      className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg hover:from-blue-600 hover:to-cyan-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
+                      onClick={() => setIsEditingEmoji(true)}
+                      disabled={!editableTitle && !editableContent}
+                      className="w-full px-6 py-4 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-center text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <ExternalLink className="w-5 h-5 mr-2" />
-                      预览笔记
+                      <Smile className="w-6 h-6 mr-2" />
+                      添加小红书表情
                     </button>
-                    <button
-                      onClick={handlePublish}
-                      disabled={!editableTitle || !editableContent || previewUrls.length === 0 || isPublishing}
-                      className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transition-all"
-                    >
-                      {isPublishing ? (
-                        <>
-                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                          {publishStep || '发布中...'}
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-5 h-5 mr-2" />
-                          发布笔记
-                        </>
-                      )}
-                    </button>
+
+                    {/* 其他操作 */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => setShowPreview(true)}
+                        disabled={!editableTitle || !editableContent}
+                        className="px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                        <ExternalLink className="w-5 h-5 mr-2" />
+                        预览
+                      </button>
+                      <button
+                        onClick={handlePublish}
+                        disabled={!editableTitle || !editableContent || uploadedFiles.length === 0 || isPublishing}
+                        className="px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                        {isPublishing ? (
+                          <>
+                            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                            {publishStep || '发布中...'}
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-5 h-5 mr-2" />
+                            发布
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* 提示信息 */}
+                    {uploadedFiles.length === 0 && (
+                      <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1">
+                        <Info className="w-3 h-3" />
+                        发布功能需要上传至少一张图片
+                      </p>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -1134,7 +1161,7 @@ function RewritePageContent() {
             )}
 
             {/* 复刻完成状态 */}
-            {pageState === 'completed' && rewriteResult && (
+            {pageState === 'completed' && rewriteResult && !isEditingEmoji && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -1207,31 +1234,205 @@ function RewritePageContent() {
                   </div>
 
                   {/* 操作按钮 */}
-                  <div className="flex items-center space-x-3 pt-4 border-t border-gray-200">
+                  <div className="space-y-3 pt-4 border-t border-gray-200">
+                    {/* 主要操作：添加表情 */}
                     <button
-                      onClick={handleSave}
-                      className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center"
+                      onClick={() => setIsEditingEmoji(true)}
+                      className="w-full px-6 py-4 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-center text-lg"
                     >
-                      <Save className="w-4 h-4 mr-2" />
-                      保存草稿
+                      <Smile className="w-6 h-6 mr-2" />
+                      添加小红书表情
                     </button>
-                    <button
-                      onClick={handleRegenerate}
-                      className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      重新复刻
-                    </button>
-                    <button
-                      className="px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 flex items-center"
-                    >
-                      <Send className="w-4 h-4 mr-2" />
-                      发布
-                    </button>
+
+                    {/* 其他操作 */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={handleSave}
+                        className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        保存草稿
+                      </button>
+                      <button
+                        onClick={() => setShowPreview(true)}
+                        className="px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center justify-center"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        预览
+                      </button>
+                      <button
+                        onClick={handleRegenerate}
+                        className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center justify-center"
+                      >
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        重新复刻
+                      </button>
+                      <button
+                        onClick={handlePublish}
+                        disabled={isPublishing}
+                        className="px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                        {isPublishing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            {publishStep || '发布中...'}
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            发布
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </motion.div>
             )}
+
+            {/* 表情编辑模式 */}
+            <AnimatePresence>
+              {(pageState === 'parsed' || pageState === 'completed') && isEditingEmoji && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
+                  {/* 标题 */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-pink-500 rounded-full flex items-center justify-center mr-3">
+                        <Smile className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">添加小红书官方表情</h3>
+                        <p className="text-sm text-gray-500">在关键位置添加表情，让笔记更生动有趣</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsEditingEmoji(false)}
+                      className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* 标题编辑 */}
+                  <div className="p-6 bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl border-2 border-pink-100">
+                    <XHSEmojiTextEditor
+                      value={editableTitle}
+                      onChange={setEditableTitle}
+                      placeholder="编辑标题..."
+                      label="标题"
+                      rows={2}
+                      maxLength={50}
+                      showEmojiButton={true}
+                      showStats={true}
+                    />
+                  </div>
+
+                  {/* 正文编辑 */}
+                  <div className="p-6 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl border-2 border-blue-100">
+                    <XHSEmojiTextEditor
+                      value={editableContent}
+                      onChange={setEditableContent}
+                      placeholder="编辑正文，可以添加小红书表情..."
+                      label="正文内容"
+                      rows={14}
+                      maxLength={1000}
+                      showEmojiButton={true}
+                      showStats={true}
+                    />
+                  </div>
+
+                  {/* 使用提示 */}
+                  <div className="p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl border border-yellow-200">
+                    <div className="flex items-start gap-3">
+                      <Info className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-gray-800 mb-2">💡 表情使用建议</h4>
+                        <ul className="text-xs text-gray-600 space-y-1">
+                          <li>• <strong>开头</strong>：使用吸引眼球的表情（如 [派对R] [炸裂R]）</li>
+                          <li>• <strong>重点</strong>：强调关键信息（如 [笑哭R] [赞R]）</li>
+                          <li>• <strong>结尾</strong>：行动号召（如 [拿走R] [比心R]）</li>
+                          <li>• <strong>频率</strong>：建议全文 5-8 个表情，每段 1-2 个</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 操作按钮 */}
+                  <div className="space-y-3 pt-4">
+                    {/* 主要操作 */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          // 记录表情使用（用于学习用户偏好）
+                          recordEmojiUsage(editableTitle, 'title')
+                          recordEmojiUsage(editableContent, 'content')
+
+                          // 保存更改
+                          createHistoryVersion(
+                            editableTitle,
+                            editableContent,
+                            editableTags,
+                            'manual-edit'
+                          )
+                          setIsEditingEmoji(false)
+                          alert('✅ 表情已添加，内容已保存！\n\n系统已记录你的表情使用偏好，下次 AI 改写会更符合你的风格。')
+                        }}
+                        className="flex-1 px-6 py-4 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+                      >
+                        <Check className="w-5 h-5 mr-2" />
+                        保存表情
+                      </button>
+                      <button
+                        onClick={() => setIsEditingEmoji(false)}
+                        className="px-6 py-4 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all"
+                      >
+                        取消
+                      </button>
+                    </div>
+
+                    {/* 快捷操作 */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => {
+                          // 记录表情使用
+                          recordEmojiUsage(editableTitle, 'title')
+                          recordEmojiUsage(editableContent, 'content')
+                          createHistoryVersion(editableTitle, editableContent, editableTags, 'manual-edit')
+                          setIsEditingEmoji(false)
+                          setShowPreview(true)
+                        }}
+                        disabled={!editableTitle || !editableContent}
+                        className="px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        保存并预览
+                      </button>
+                      <button
+                        onClick={() => {
+                          // 记录表情使用
+                          recordEmojiUsage(editableTitle, 'title')
+                          recordEmojiUsage(editableContent, 'content')
+                          createHistoryVersion(editableTitle, editableContent, editableTags, 'manual-edit')
+                          setIsEditingEmoji(false)
+                          handlePublish()
+                        }}
+                        disabled={!editableTitle || !editableContent || uploadedFiles.length === 0 || isPublishing}
+                        className="px-4 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        保存并发布
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </GlassCard>
         </div>
       </div>
