@@ -35,7 +35,7 @@
 ```bash
 # ==================== AI服务 ====================
 GEMINI_TEXT_API_KEY
-AIzaSy***已隐藏***
+你的Gemini密钥（从 https://aistudio.google.com/app/apikey 获取）
 
 GEMINI_TEXT_MODEL
 gemini-3-pro-preview
