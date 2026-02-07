@@ -101,14 +101,25 @@ export default function XHSEmojiTextEditor({
         </div>
       )}
 
-      {/* 工具栏 */}
-      <div className="flex items-center justify-end gap-2 p-2 bg-gray-50 border-2 border-gray-200 border-b-0 rounded-t-xl">
+      {/* 文本编辑区和表情按钮 */}
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={rows}
+          maxLength={maxLength}
+          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all resize-none font-['PingFang_SC'] text-gray-800 leading-relaxed"
+        />
+
+        {/* 表情按钮 - 浮动在右上角 */}
         {showEmojiButton && (
-          <div ref={emojiButtonRef} className="relative">
+          <div ref={emojiButtonRef} className="absolute top-2 right-2">
             <button
               type="button"
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors bg-white border border-gray-200"
               title="添加表情"
             >
               <span className="text-lg">😊</span>
@@ -125,19 +136,6 @@ export default function XHSEmojiTextEditor({
             </AnimatePresence>
           </div>
         )}
-      </div>
-
-      {/* 文本编辑区 */}
-      <div className="relative">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          rows={rows}
-          maxLength={maxLength}
-          className="w-full px-4 py-3 border-2 border-gray-200 border-t-0 rounded-b-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all resize-none font-['PingFang_SC'] text-gray-800 leading-relaxed"
-        />
       </div>
 
     </div>

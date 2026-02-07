@@ -757,13 +757,12 @@ function RewritePageContent() {
         {/* 图片上传和设置区域 */}
         <div className="space-y-6">
           {/* 图片上传 */}
-          {pageState !== 'empty' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <GlassCard className="p-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <GlassCard className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <ImageIcon className="w-5 h-5 mr-2 text-purple-500" />
                   图片上传
@@ -821,17 +820,15 @@ function RewritePageContent() {
                   )}
                 </div>
               </GlassCard>
-            </motion.div>
-          )}
+          </motion.div>
 
           {/* 改写设置 */}
-          {pageState !== 'empty' && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <GlassCard className="p-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <GlassCard className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Settings className="w-5 h-5 mr-2 text-purple-500" />
                   改写设置
@@ -869,29 +866,15 @@ function RewritePageContent() {
                   </div>
                 </div>
               </GlassCard>
-            </motion.div>
-          )}
+          </motion.div>
 
         </div>
 
         {/* 内容编辑区域 */}
         <div>
           <GlassCard className="p-6">
-            {/* 空白状态 */}
-            {pageState === 'empty' && (
-              <div className="flex flex-col items-center justify-center h-full py-20">
-                <div className="w-24 h-24 bg-gradient-to-br from-pink-100 to-purple-100 rounded-full flex items-center justify-center mb-6">
-                  <LinkIcon className="w-12 h-12 text-pink-500" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">等待解析小红书链接</h3>
-                <p className="text-gray-500 text-center max-w-md">
-                  粘贴小红书笔记链接到左侧输入框，点击"解析"开始
-                </p>
-              </div>
-            )}
-
-            {/* 解析成功状态 */}
-            {pageState === 'parsed' && originalNote && (
+            {/* 解析成功状态或空状态 - 都显示编辑界面 */}
+            {(pageState === 'empty' || (pageState === 'parsed' && originalNote)) && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
