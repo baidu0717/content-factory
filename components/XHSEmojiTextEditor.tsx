@@ -101,7 +101,35 @@ export default function XHSEmojiTextEditor({
         </div>
       )}
 
-      {/* 文本编辑区和表情按钮 */}
+      {/* 表情按钮独立一行 - 透明背景，位于右侧 */}
+      {showEmojiButton && (
+        <div className="flex justify-end">
+          <div ref={emojiButtonRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors bg-white border border-gray-200 shadow-sm"
+              title="添加表情"
+            >
+              <span className="text-xl">😊</span>
+            </button>
+
+            {/* 表情选择器 - 右对齐 */}
+            <AnimatePresence>
+              {showEmojiPicker && (
+                <div className="absolute top-full right-0 mt-1 z-50">
+                  <XHSEmojiPicker
+                    onEmojiSelect={handleEmojiSelect}
+                    onClose={() => setShowEmojiPicker(false)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      )}
+
+      {/* 文本编辑区 */}
       <div className="relative">
         <textarea
           ref={textareaRef}
@@ -112,30 +140,6 @@ export default function XHSEmojiTextEditor({
           maxLength={maxLength}
           className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all resize-none font-['PingFang_SC'] text-gray-800 leading-relaxed"
         />
-
-        {/* 表情按钮 - 浮动在右上角 */}
-        {showEmojiButton && (
-          <div ref={emojiButtonRef} className="absolute top-2 right-2">
-            <button
-              type="button"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors bg-white border border-gray-200"
-              title="添加表情"
-            >
-              <span className="text-lg">😊</span>
-            </button>
-
-            {/* 表情选择器 */}
-            <AnimatePresence>
-              {showEmojiPicker && (
-                <XHSEmojiPicker
-                  onEmojiSelect={handleEmojiSelect}
-                  onClose={() => setShowEmojiPicker(false)}
-                />
-              )}
-            </AnimatePresence>
-          </div>
-        )}
       </div>
 
     </div>
