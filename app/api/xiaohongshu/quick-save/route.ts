@@ -132,14 +132,42 @@ async function parseXiaohongshu(url: string) {
   console.log('[快捷保存-解析] 清理后正文:', content.substring(0, 100) + '...')
 
   // 从正文中提取话题标签
-  // 查找所有 #xxx 格式的标签（排除 #xxx[话题]# 这种已被删除的）
-  const tagMatches = rawContent.match(/#[^\s#]+/g) || []
-  const tags = tagMatches
-    .filter((tag: string) => !tag.includes('[话题]'))
-    .join(' ')
+  // 匹配 #xxx[话题]# 格式，提取出 #xxx 部分
+  const tagPattern = /#([^#\s]+)\[话题\]#/g
+  const tagMatches: string[] = []
+  let match
+  while ((match = tagPattern.exec(rawContent)) !== null) {
+    tagMatches.push('#' + match[1])
+  }
+  const tags = tagMatches.join(' ')
 
-  // 提取标题（从正文第一行或前100字符）
-  const title = content.split('\n')[0].substring(0, 100) || '小红书笔记'
+  // 提取标题（智能截取）
+  let title = ''
+  if (content) {
+    // 先按换行符分割，取第一行
+    const firstLine = content.split('\n')[0]
+    // 如果第一行太长（超过50字符），智能截断
+    if (firstLine.length > 50) {
+      // 在前50个字符中找到合适的截断点（句号、感叹号、问号、或空格）
+      const truncated = firstLine.substring(0, 50)
+      const breakPoints = [
+        truncated.lastIndexOf('。'),
+        truncated.lastIndexOf('！'),
+        truncated.lastIndexOf('？'),
+        truncated.lastIndexOf('|||'),
+        truncated.lastIndexOf(' ')
+      ]
+      const breakPoint = Math.max(...breakPoints.filter(p => p > 20)) // 至少保留20个字符
+      title = breakPoint > 0 ? firstLine.substring(0, breakPoint + 1) : truncated + '...'
+    } else {
+      title = firstLine
+    }
+  }
+
+  // 如果仍然为空，使用默认值
+  if (!title) {
+    title = '小红书笔记'
+  }
 
   // 提取图片URL（从medias数组）
   const images = data.medias
