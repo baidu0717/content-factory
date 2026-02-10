@@ -135,7 +135,7 @@ async function parseXiaohongshu(url: string) {
   // 查找所有 #xxx 格式的标签（排除 #xxx[话题]# 这种已被删除的）
   const tagMatches = rawContent.match(/#[^\s#]+/g) || []
   const tags = tagMatches
-    .filter(tag => !tag.includes('[话题]'))
+    .filter((tag: string) => !tag.includes('[话题]'))
     .join(' ')
 
   // 提取标题（从正文第一行或前100字符）
