@@ -3,7 +3,6 @@
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
-const FEISHU_REFRESH_TOKEN = process.env.FEISHU_REFRESH_TOKEN || ''
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
 
 // 内存缓存
@@ -11,6 +10,28 @@ let cachedAppAccessToken: string | null = null
 let cachedUserAccessToken: string | null = null
 let appTokenExpireTime: number = 0
 let userTokenExpireTime: number = 0
+// 缓存 refresh_token（动态更新）
+let cachedRefreshToken: string | null = null
+
+/**
+ * 获取当前 refresh_token（优先使用缓存）
+ */
+function getCurrentRefreshToken(): string {
+  if (cachedRefreshToken) {
+    return cachedRefreshToken
+  }
+  const token = process.env.FEISHU_REFRESH_TOKEN || ''
+  cachedRefreshToken = token
+  return token
+}
+
+/**
+ * 更新缓存的 refresh_token
+ */
+function updateCachedRefreshToken(newToken: string): void {
+  cachedRefreshToken = newToken
+  console.log('[飞书Auth] 内存中的 refresh_token 已更新')
+}
 
 /**
  * 自动更新Vercel环境变量中的refresh_token
@@ -99,7 +120,9 @@ export async function getUserAccessToken(): Promise<string> {
   console.log('[飞书Auth] 刷新 user_access_token...')
 
   try {
-    if (!FEISHU_REFRESH_TOKEN) {
+    // 获取当前 refresh_token
+    const currentRefreshToken = getCurrentRefreshToken()
+    if (!currentRefreshToken) {
       throw new Error('未配置 FEISHU_REFRESH_TOKEN（请检查环境变量）')
     }
 
@@ -115,7 +138,7 @@ export async function getUserAccessToken(): Promise<string> {
       },
       body: JSON.stringify({
         grant_type: 'refresh_token',
-        refresh_token: FEISHU_REFRESH_TOKEN
+        refresh_token: currentRefreshToken
       })
     })
 
@@ -142,20 +165,37 @@ export async function getUserAccessToken(): Promise<string> {
 
     console.log('[飞书Auth] user_access_token 刷新成功，有效期:', expires_in, '秒')
 
-    // 如果获得了新的 refresh_token，自动更新到Vercel
-    if (newRefreshToken && newRefreshToken !== FEISHU_REFRESH_TOKEN) {
+    // 如果获得了新的 refresh_token，自动更新
+    if (newRefreshToken && newRefreshToken !== currentRefreshToken) {
       console.warn('[飞书Auth] ⚠️  检测到新的 refresh_token')
-      console.warn('[飞书Auth] 旧token:', FEISHU_REFRESH_TOKEN.substring(0, 20) + '...')
+      console.warn('[飞书Auth] 旧token:', currentRefreshToken.substring(0, 20) + '...')
       console.warn('[飞书Auth] 新token:', newRefreshToken.substring(0, 20) + '...')
 
-      // 在生产环境(Vercel)自动更新环境变量
-      if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_TOKEN) {
-        console.log('[飞书Auth] 生产环境,尝试自动更新Vercel环境变量...')
-        updateVercelToken(newRefreshToken).catch(err => {
-          console.error('[飞书Auth] 自动更新Vercel token失败:', err)
-        })
+      // 立即更新内存缓存，确保当前请求使用新token
+      updateCachedRefreshToken(newRefreshToken)
+
+      // 在 Vercel 环境下自动更新环境变量（支持所有环境：production/preview/development）
+      const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV
+      const hasVercelToken = process.env.VERCEL_TOKEN
+
+      if (isVercel && hasVercelToken) {
+        console.log('[飞书Auth] Vercel环境检测到，尝试自动更新环境变量...')
+        console.log('[飞书Auth] 当前环境:', process.env.VERCEL_ENV || 'unknown')
+
+        // 使用 await 同步等待更新完成，确保更新成功
+        try {
+          await updateVercelToken(newRefreshToken)
+          console.log('[飞书Auth] ✅ Vercel环境变量更新成功')
+        } catch (err) {
+          console.error('[飞书Auth] ❌ 自动更新Vercel token失败:', err)
+          console.error('[飞书Auth] 请手动更新环境变量: FEISHU_REFRESH_TOKEN=' + newRefreshToken)
+        }
       } else {
-        console.warn('[飞书Auth] 请手动更新环境变量:')
+        if (!isVercel) {
+          console.warn('[飞书Auth] 非Vercel环境，请手动更新 .env.local:')
+        } else {
+          console.warn('[飞书Auth] 未配置 VERCEL_TOKEN，请手动更新环境变量:')
+        }
         console.warn(`FEISHU_REFRESH_TOKEN=${newRefreshToken}`)
       }
     }
