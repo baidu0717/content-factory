@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
-// 极致了 API 配置
-const JIZHILE_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY || 'JZL1b7f46d7a6b92240'
-const JIZHILE_API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_BASE || 'https://www.dajiala.com/fbmain/monitor/v3/xhs'
+// 哼哼猫 API 配置
+const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
+const HENGHENGMAO_API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE || 'https://api.meowload.net/openapi/extract/post'
 
 // 飞书 API 配置
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
@@ -75,26 +75,22 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
 }
 
 /**
- * 解析小红书链接（使用极致了API）
+ * 解析小红书链接（使用哼哼猫API）
  */
 async function parseXiaohongshu(url: string) {
   console.log('[快捷保存-解析] 开始解析链接:', url)
 
-  // 1. 获取note_id
-  const { noteId } = await getFullUrlAndNoteId(url)
-
-  // 2. 调用极致了API（type=11详情接口，测试xsec_token为空）
-  console.log('[快捷保存-解析] 调用极致了API...')
-  const response = await fetch(JIZHILE_API_URL, {
+  // 哼哼猫API直接支持短链接，无需先解析
+  console.log('[快捷保存-解析] 调用哼哼猫API...')
+  const response = await fetch(HENGHENGMAO_API_URL, {
     method: 'POST',
     headers: {
+      'x-api-key': HENGHENGMAO_API_KEY,
+      'accept-language': 'zh',
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      key: JIZHILE_API_KEY,
-      type: 11,
-      note_id: noteId,
-      xsec_token: ''  // 测试空值
+      url: url  // 直接使用原始URL（支持短链接）
     })
   })
 
@@ -109,93 +105,59 @@ async function parseXiaohongshu(url: string) {
   // 详细日志
   console.log('[快捷保存-解析] API 完整响应:', JSON.stringify(data, null, 2))
 
-  // 检查API返回码（极致了API返回码是0表示成功）
-  if (data.code !== 0) {
-    console.error('[快捷保存-解析] API返回错误:', data)
-    throw new Error(`API错误: ${data.msg || data.message || '未知错误'}`)
-  }
-
-  // 极致了 type=11 API 数据在 note_list[0] 中
-  const noteData = data.note_list?.[0]
-  if (!noteData) {
+  // 哼哼猫API返回格式: { text: string, medias: [...] }
+  if (!data.text && !data.medias) {
+    console.error('[快捷保存-解析] API返回数据格式错误:', data)
     throw new Error('API返回数据格式错误')
   }
 
-  console.log('[快捷保存-解析] 笔记数据:', JSON.stringify(noteData, null, 2))
+  console.log('[快捷保存-解析] 笔记数据获取成功')
 
-  // 提取数据
-  const title = noteData.title || ''
+  // 提取正文内容
+  const rawContent = data.text || ''
 
-  // 提取话题标签（格式：#话题名 空格分隔，单个#）
-  const tags = noteData.hash_tag?.map((tag: any) => `#${tag.name}`).join(' ') || ''
-
-  // 提取正文并清理末尾的话题标签
-  const rawContent = noteData.desc || ''
+  // 清理正文：移除末尾的话题标签
   let content = rawContent
 
-  // 策略：小红书格式 = 正文内容 + 末尾话题标签区域
-  // 末尾话题标签的特征：#xxx[话题]#、@xxx（后面是空格/标签/结尾）
-  // 正文中的#@特征：#1好物、@朋友家（后面紧跟文字）
-
-  // 使用更精确的匹配：只删除末尾连续的话题标签块
-  // 1. 先删除所有 #xxx[话题]# 格式（用空格替换以保持结构）
+  // 1. 删除 #xxx[话题]# 格式
   content = content.replace(/#[^#]+\[话题\]#/g, ' ')
 
-  // 2. 删除末尾的 @用户名 和 #话题# 格式（确保这些在末尾）
-  // 从末尾开始匹配：连续的空格 + @word 或 #word# 或 #word
-  // 但要确保这些是"独立的标签"，不是正文的一部分
-
-  // 更简单的方法：从后往前删除明显的末尾标签
-  // 末尾标签模式：(空格) + (@单词|#单词#) + (可能重复)
+  // 2. 删除末尾的标签（@用户名 和 #话题#）
   content = content.replace(/(\s+[@#]\S+)+\s*$/g, '')
 
   // 清理多余的空格
   content = content.replace(/\s+/g, ' ').trim()
 
-  console.log('[快捷保存-解析] 原始正文:', rawContent)
-  console.log('[快捷保存-解析] 清理后正文:', content)
+  console.log('[快捷保存-解析] 原始正文:', rawContent.substring(0, 100) + '...')
+  console.log('[快捷保存-解析] 清理后正文:', content.substring(0, 100) + '...')
 
-  const authorName = noteData.user?.nickname || noteData.user?.nick_name || noteData.user?.name || ''
+  // 从正文中提取话题标签
+  // 查找所有 #xxx 格式的标签（排除 #xxx[话题]# 这种已被删除的）
+  const tagMatches = rawContent.match(/#[^\s#]+/g) || []
+  const tags = tagMatches
+    .filter(tag => !tag.includes('[话题]'))
+    .join(' ')
 
-  // 互动数据
-  const viewCount = noteData.view_count || 0
-  const likedCount = noteData.liked_count || 0
-  const collectedCount = noteData.collected_count || 0
-  const commentCount = noteData.comments_count || 0
+  // 提取标题（从正文第一行或前100字符）
+  const title = content.split('\n')[0].substring(0, 100) || '小红书笔记'
 
-  // 发布时间（将时间戳转换为可读格式）
-  let publishTime = ''
-  const timestamp = noteData.time || noteData.create_time
-  if (timestamp) {
-    // 如果是Unix时间戳（10位秒或13位毫秒），转换为日期字符串
-    const timestampNum = typeof timestamp === 'string' ? parseInt(timestamp) : timestamp
-    if (timestampNum && !isNaN(timestampNum)) {
-      // 如果是10位秒级时间戳，转换为毫秒
-      const ms = timestampNum.toString().length === 10 ? timestampNum * 1000 : timestampNum
-      const date = new Date(ms)
-      // 格式化为 YYYY-MM-DD HH:mm:ss
-      publishTime = date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }).replace(/\//g, '-')
-    } else {
-      // 如果已经是字符串格式，直接使用
-      publishTime = String(timestamp)
-    }
-  }
+  // 提取图片URL（从medias数组）
+  const images = data.medias
+    ?.filter((media: any) => media.media_type === 'image')
+    .map((media: any) => media.resource_url || media.preview_url || '')
+    .filter(Boolean) || []
 
-  // 提取图片（极致了API的图片在images_list中）
-  const images = noteData.images_list?.map((img: any) => {
-    // 使用original或url字段获取图片链接
-    return img.original || img.url || img.url_default || ''
-  }).filter(Boolean) || []
+  console.log('[快捷保存-解析] 解析成功 - 标题:', title, '图片数:', images.length)
 
-  console.log('[快捷保存-解析] 解析成功 - 标题:', title, '图片数:', images.length, '作者:', authorName)
+  // 注意：哼哼猫API不返回以下数据，设为默认值
+  const authorName = ''  // 需要手动输入
+  const viewCount = 0    // 需要手动输入
+  const likedCount = 0   // 需要手动输入
+  const collectedCount = 0  // 需要手动输入
+  const commentCount = 0    // 需要手动输入
+  const publishTime = ''    // 需要手动输入
+
+  console.log('[快捷保存-解析] ⚠️  哼哼猫API不提供互动数据，作者昵称、浏览数、点赞数等需要手动填写')
 
   return {
     title,
