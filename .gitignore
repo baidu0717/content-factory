@@ -11,3 +11,9 @@ data/
 *.db-shm
 *.db-wal
 .feishu-token.json
+# 测试脚本（包含API密钥，不应提交）
+test-*.js
+debug-*.js
+download-images.js
+fetch-record-*.js
+create-publish-table.js

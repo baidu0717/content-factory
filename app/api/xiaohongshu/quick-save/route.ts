@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
-// 哼哼猫 API 配置
+// 极致了 API 配置（优先使用，数据完整）
+const JIZHILE_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY || ''
+const JIZHILE_API_BASE = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_BASE || 'https://www.dajiala.com/fbmain/monitor/v3/xhs'
+
+// 哼哼猫 API 配置（备用，免费但数据不全）
 const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
 const HENGHENGMAO_API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE || 'https://api.meowload.net/openapi/extract/post'
 
@@ -12,7 +16,7 @@ const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/ope
  * 从短链接获取完整URL和note_id
  */
 async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string; noteId: string }> {
-  console.log('[快捷保存-解析] 跟随短链接重定向:', shortUrl)
+  console.log('[快捷保存-哼哼猫] 跟随短链接重定向:', shortUrl)
 
   // 跟随重定向获取完整URL（使用GET方法并允许自动跟随重定向）
   const response = await fetch(shortUrl, {
@@ -25,7 +29,7 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
   })
 
   const fullUrl = response.url
-  console.log('[快捷保存-解析] 完整URL:', fullUrl)
+  console.log('[快捷保存-哼哼猫] 完整URL:', fullUrl)
 
   // 从URL中提取note_id
   // 格式1: https://www.xiaohongshu.com/explore/684aa03a000000002202750b
@@ -43,7 +47,7 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
     const redirectUriMatch = fullUrl.match(/redirect_uri=([^&]+)/)
     if (redirectUriMatch) {
       const redirectUri = decodeURIComponent(redirectUriMatch[1])
-      console.log('[快捷保存-解析] 从redirect_uri提取:', redirectUri)
+      console.log('[快捷保存-哼哼猫] 从redirect_uri提取:', redirectUri)
       const redirectMatch = redirectUri.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
       if (redirectMatch) {
         noteId = redirectMatch[1]
@@ -53,35 +57,177 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
 
   // 如果还是没找到，尝试从响应体中提取
   if (!noteId) {
-    console.log('[快捷保存-解析] 尝试从响应体提取note_id...')
+    console.log('[快捷保存-哼哼猫] 尝试从响应体提取note_id...')
     const html = await response.text()
 
     // 尝试从HTML中查找小红书链接
     const htmlMatch = html.match(/https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
     if (htmlMatch) {
       noteId = htmlMatch[1]
-      console.log('[快捷保存-解析] 从HTML中提取到note_id:', noteId)
+      console.log('[快捷保存-哼哼猫] 从HTML中提取到note_id:', noteId)
     }
   }
 
   if (!noteId) {
-    console.error('[快捷保存-解析] 无法提取note_id，URL:', fullUrl)
+    console.error('[快捷保存-哼哼猫] 无法提取note_id，URL:', fullUrl)
     throw new Error(`无法从URL中提取note_id: ${fullUrl}`)
   }
 
-  console.log('[快捷保存-解析] 提取到note_id:', noteId)
+  console.log('[快捷保存-哼哼猫] 提取到note_id:', noteId)
 
   return { fullUrl, noteId }
 }
 
 /**
- * 解析小红书链接（使用哼哼猫API）
+ * 解析小红书链接（使用极致了API - 数据完整）
  */
-async function parseXiaohongshu(url: string) {
-  console.log('[快捷保存-解析] 开始解析链接:', url)
+async function parseXiaohongshuWithJizhile(url: string) {
+  console.log('[快捷保存-极致了] 开始解析链接:', url)
+
+  // 极致了API需要note_id，先解析短链接获取
+  const { noteId } = await getFullUrlAndNoteId(url)
+
+  console.log('[快捷保存-极致了] 调用极致了API...')
+  const apiUrl = `${JIZHILE_API_BASE}?type=11&note_id=${noteId}&key=${JIZHILE_API_KEY}`
+
+  const response = await fetch(apiUrl, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('[快捷保存-极致了] API错误:', errorText)
+    throw new Error(`极致了API请求失败: HTTP ${response.status}`)
+  }
+
+  const data = await response.json()
+
+  // 检查返回码
+  if (data.code !== 1000) {
+    console.error('[快捷保存-极致了] API返回错误:', data)
+    if (data.code === 1001) {
+      throw new Error('极致了API: 所有渠道不可用（临时问题）')
+    } else if (data.code === 1002) {
+      throw new Error('极致了API: 登录已过期，需要刷新KEY')
+    } else {
+      throw new Error(`极致了API错误: ${data.msg || '未知错误'}`)
+    }
+  }
+
+  console.log('[快捷保存-极致了] ✅ API调用成功')
+
+  // 极致了API返回的数据结构
+  const noteData = data.data
+  const noteInfo = noteData.note_info || {}
+  const userInfo = noteData.user || {}
+  const imageList = noteData.image_list || []
+
+  // 提取正文和话题标签
+  const rawContent = noteInfo.desc || ''
+
+  // 清理正文：移除末尾的话题标签
+  let content = rawContent
+  content = content.replace(/#[^#]+\[话题\]#/g, ' ')
+  content = content.replace(/(\s+[@#]\S+)+\s*$/g, '')
+  content = content.replace(/\s+/g, ' ').trim()
+
+  // 提取话题标签
+  const tagPattern = /#([^#\s]+)\[话题\]#/g
+  const tagMatches: string[] = []
+  let match
+  while ((match = tagPattern.exec(rawContent)) !== null) {
+    tagMatches.push('#' + match[1])
+  }
+  const tags = tagMatches.join(' ')
+
+  // 提取标题和纯正文（智能截取）
+  let title = noteInfo.title || ''
+  let bodyContent = content
+
+  if (!title && content) {
+    // 如果API没有返回标题，从正文提取
+    const firstLine = content.split('\n')[0]
+    const pipeIndex = firstLine.indexOf('|||')
+
+    if (pipeIndex > 0 && pipeIndex <= 50) {
+      title = firstLine.substring(0, pipeIndex).trim()
+      const restOfFirstLine = firstLine.substring(pipeIndex + 3).trim()
+      const restLines = content.split('\n').slice(1).join('\n')
+      bodyContent = (restOfFirstLine + (restLines ? '\n' + restLines : '')).trim()
+    } else if (firstLine.length > 30) {
+      const truncated = firstLine.substring(0, 30)
+      const breakPoints = [
+        truncated.lastIndexOf('。'),
+        truncated.lastIndexOf('！'),
+        truncated.lastIndexOf('？'),
+        truncated.lastIndexOf('，'),
+        truncated.lastIndexOf(' ')
+      ]
+      const breakPoint = Math.max(...breakPoints.filter(p => p > 10))
+      title = breakPoint > 0 ? firstLine.substring(0, breakPoint + 1) : truncated + '...'
+      const restOfFirstLine = firstLine.substring(breakPoint > 0 ? breakPoint + 1 : 30).trim()
+      const restLines = content.split('\n').slice(1).join('\n')
+      bodyContent = (restOfFirstLine + (restLines ? '\n' + restLines : '')).trim()
+    } else {
+      title = firstLine
+      bodyContent = content.split('\n').slice(1).join('\n').trim()
+    }
+  } else if (title && content) {
+    // 如果API返回了标题，从正文中移除标题部分
+    if (content.startsWith(title)) {
+      bodyContent = content.substring(title.length).trim()
+    }
+  }
+
+  if (!title) {
+    title = '小红书笔记'
+  }
+
+  if (!bodyContent) {
+    bodyContent = content
+  }
+
+  // 提取图片URL
+  const images = imageList
+    .map((img: any) => img.url_default || img.url || '')
+    .filter(Boolean)
+
+  // 提取互动数据（极致了API的优势）
+  const authorName = userInfo.nick_name || userInfo.nickname || ''
+  const viewCount = parseInt(noteInfo.view_count || noteData.interact_info?.read_count || '0')
+  const likedCount = parseInt(noteInfo.liked_count || noteData.interact_info?.liked_count || '0')
+  const collectedCount = parseInt(noteInfo.collected_count || noteData.interact_info?.collected_count || '0')
+  const commentCount = parseInt(noteInfo.comment_count || noteData.interact_info?.comment_count || '0')
+  const publishTime = noteInfo.time || noteInfo.publish_time || ''
+
+  console.log('[快捷保存-极致了] 解析成功 - 标题:', title, '图片数:', images.length)
+  console.log('[快捷保存-极致了] ✅ 完整数据 - 作者:', authorName, '浏览:', viewCount, '点赞:', likedCount)
+
+  return {
+    title,
+    content: bodyContent,
+    tags,
+    images,
+    authorName,
+    viewCount,
+    likedCount,
+    collectedCount,
+    commentCount,
+    publishTime
+  }
+}
+
+/**
+ * 解析小红书链接（使用哼哼猫API - 免费但数据不全）
+ */
+async function parseXiaohongshuWithHenghengmao(url: string) {
+  console.log('[快捷保存-哼哼猫] 开始解析链接:', url)
 
   // 哼哼猫API直接支持短链接，无需先解析
-  console.log('[快捷保存-解析] 调用哼哼猫API...')
+  console.log('[快捷保存-哼哼猫] 调用哼哼猫API...')
   const response = await fetch(HENGHENGMAO_API_URL, {
     method: 'POST',
     headers: {
@@ -96,22 +242,22 @@ async function parseXiaohongshu(url: string) {
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error('[快捷保存-解析] API错误:', errorText)
+    console.error('[快捷保存-哼哼猫] API错误:', errorText)
     throw new Error(`解析失败: HTTP ${response.status}`)
   }
 
   const data = await response.json()
 
   // 详细日志
-  console.log('[快捷保存-解析] API 完整响应:', JSON.stringify(data, null, 2))
+  console.log('[快捷保存-哼哼猫] API 完整响应:', JSON.stringify(data, null, 2))
 
   // 哼哼猫API返回格式: { text: string, medias: [...] }
   if (!data.text && !data.medias) {
-    console.error('[快捷保存-解析] API返回数据格式错误:', data)
+    console.error('[快捷保存-哼哼猫] API返回数据格式错误:', data)
     throw new Error('API返回数据格式错误')
   }
 
-  console.log('[快捷保存-解析] 笔记数据获取成功')
+  console.log('[快捷保存-哼哼猫] 笔记数据获取成功')
 
   // 提取正文内容
   const rawContent = data.text || ''
@@ -128,8 +274,8 @@ async function parseXiaohongshu(url: string) {
   // 清理多余的空格
   content = content.replace(/\s+/g, ' ').trim()
 
-  console.log('[快捷保存-解析] 原始正文:', rawContent.substring(0, 100) + '...')
-  console.log('[快捷保存-解析] 清理后正文:', content.substring(0, 100) + '...')
+  console.log('[快捷保存-哼哼猫] 原始正文:', rawContent.substring(0, 100) + '...')
+  console.log('[快捷保存-哼哼猫] 清理后正文:', content.substring(0, 100) + '...')
 
   // 从正文中提取话题标签
   // 匹配 #xxx[话题]# 格式，提取出 #xxx 部分
@@ -197,7 +343,7 @@ async function parseXiaohongshu(url: string) {
     .map((media: any) => media.resource_url || media.preview_url || '')
     .filter(Boolean) || []
 
-  console.log('[快捷保存-解析] 解析成功 - 标题:', title, '图片数:', images.length)
+  console.log('[快捷保存-哼哼猫] 解析成功 - 标题:', title, '图片数:', images.length)
 
   // 注意：哼哼猫API不返回以下数据，设为默认值
   const authorName = ''  // 需要手动输入
@@ -207,7 +353,7 @@ async function parseXiaohongshu(url: string) {
   const commentCount = 0    // 需要手动输入
   const publishTime = ''    // 需要手动输入
 
-  console.log('[快捷保存-解析] ⚠️  哼哼猫API不提供互动数据，作者昵称、浏览数、点赞数等需要手动填写')
+  console.log('[快捷保存-哼哼猫] ⚠️  哼哼猫API不提供互动数据，作者昵称、浏览数、点赞数等需要手动填写')
 
   return {
     title,
@@ -220,6 +366,60 @@ async function parseXiaohongshu(url: string) {
     collectedCount,
     commentCount,
     publishTime
+  }
+}
+
+/**
+ * 解析小红书链接（统一入口 - 自动回退机制）
+ * 优先使用极致了API（完整数据），失败则回退到哼哼猫API（免费但数据不全）
+ */
+async function parseXiaohongshu(url: string): Promise<{
+  title: string
+  content: string
+  tags: string
+  images: string[]
+  authorName: string
+  viewCount: number
+  likedCount: number
+  collectedCount: number
+  commentCount: number
+  publishTime: string
+  apiUsed?: 'jizhile' | 'henghengmao'
+  apiError?: string
+}> {
+  console.log('[快捷保存] 开始解析链接:', url)
+  console.log('[快捷保存] 策略: 优先极致了(完整数据) → 回退哼哼猫(免费)')
+
+  // 尝试1: 极致了API（优先）
+  try {
+    console.log('[快捷保存] 🎯 尝试使用极致了API...')
+    const result = await parseXiaohongshuWithJizhile(url)
+    console.log('[快捷保存] ✅ 极致了API成功！使用完整数据')
+    return {
+      ...result,
+      apiUsed: 'jizhile'
+    }
+  } catch (jizhileError: any) {
+    const errorMsg = jizhileError?.message || String(jizhileError)
+    console.warn('[快捷保存] ⚠️  极致了API失败:', errorMsg)
+    console.warn('[快捷保存] 准备回退到哼哼猫API...')
+
+    // 尝试2: 哼哼猫API（备用）
+    try {
+      console.log('[快捷保存] 🔄 使用哼哼猫API...')
+      const result = await parseXiaohongshuWithHenghengmao(url)
+      console.log('[快捷保存] ✅ 哼哼猫API成功！数据不全，需手动填写')
+      return {
+        ...result,
+        apiUsed: 'henghengmao',
+        apiError: `极致了失败: ${errorMsg}`
+      }
+    } catch (henghengmaoError: any) {
+      const henghengmaoMsg = henghengmaoError?.message || String(henghengmaoError)
+      console.error('[快捷保存] ❌ 哼哼猫API也失败:', henghengmaoMsg)
+      console.error('[快捷保存] 所有API都失败，无法继续')
+      throw new Error(`解析失败 - 极致了: ${errorMsg}, 哼哼猫: ${henghengmaoMsg}`)
+    }
   }
 }
 
@@ -531,8 +731,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 同步模式（原有逻辑）
-    // 1. 解析小红书链接
-    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime } = await parseXiaohongshu(url)
+    // 1. 解析小红书链接（自动选择API）
+    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
 
     // 2. 处理图片：下载并上传到飞书，获取 file_token
     const fileTokens = await processImages(images, finalAppToken)
@@ -560,9 +760,21 @@ export async function POST(request: NextRequest) {
 
     // 4. 返回成功消息
     const successImages = fileTokens.filter(token => token !== null).length
+
+    // 构建API使用提示
+    let apiInfo = ''
+    if (apiUsed === 'jizhile') {
+      apiInfo = '\n🎯 极致了API (完整数据)'
+    } else if (apiUsed === 'henghengmao') {
+      apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
+      if (apiError) {
+        apiInfo += `\n💡 ${apiError.split(':')[0]}`
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: `✅ 保存成功!\n\n📝 ${title}\n👤 ${authorName}\n📸 ${successImages}/${images.length}张图片\n👁️ ${viewCount} 浏览\n⏱️ 耗时${duration}ms`,
+      message: `✅ 保存成功!${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}\n📸 ${successImages}/${images.length}张图片\n👁️ ${viewCount} 浏览\n⏱️ 耗时${duration}ms`,
       data: {
         title,
         authorName,
@@ -572,7 +784,9 @@ export async function POST(request: NextRequest) {
         likedCount,
         collectedCount,
         commentCount,
-        duration
+        duration,
+        apiUsed,
+        apiError
       }
     })
 
@@ -594,8 +808,8 @@ async function processAsync(url: string, appToken: string, tableId: string, star
   try {
     console.log('[快捷保存-异步] 开始后台处理...')
 
-    // 1. 解析小红书链接
-    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime } = await parseXiaohongshu(url)
+    // 1. 解析小红书链接（自动选择API）
+    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed } = await parseXiaohongshu(url)
 
     // 2. 处理图片
     const fileTokens = await processImages(images, appToken)
