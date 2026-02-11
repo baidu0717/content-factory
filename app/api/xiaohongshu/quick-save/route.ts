@@ -110,8 +110,8 @@ async function parseXiaohongshuWithJizhile(url: string) {
 
   const data = await response.json()
 
-  // 检查返回码
-  if (data.code !== 1000) {
+  // 检查返回码（极致了API成功返回 code: 0）
+  if (data.code !== 0) {
     console.error('[快捷保存-极致了] API返回错误:', data)
     if (data.code === 1001) {
       throw new Error('极致了API: 所有渠道不可用（临时问题）')
@@ -125,13 +125,17 @@ async function parseXiaohongshuWithJizhile(url: string) {
   console.log('[快捷保存-极致了] ✅ API调用成功')
 
   // 极致了API返回的数据结构
-  const noteData = data.data
-  const noteInfo = noteData.note_info || {}
+  const noteList = data.note_list || []
+  if (noteList.length === 0) {
+    throw new Error('极致了API: 未找到笔记数据')
+  }
+
+  const noteData = noteList[0]
   const userInfo = noteData.user || {}
-  const imageList = noteData.image_list || []
+  const imageList = noteData.images_list || []
 
   // 提取正文和话题标签
-  const rawContent = noteInfo.desc || ''
+  const rawContent = noteData.desc || ''
 
   // 清理正文：移除末尾的话题标签
   let content = rawContent
@@ -149,7 +153,7 @@ async function parseXiaohongshuWithJizhile(url: string) {
   const tags = tagMatches.join(' ')
 
   // 提取标题和纯正文（智能截取）
-  let title = noteInfo.title || ''
+  let title = noteData.title || ''
   let bodyContent = content
 
   if (!title && content) {
@@ -195,18 +199,21 @@ async function parseXiaohongshuWithJizhile(url: string) {
     bodyContent = content
   }
 
-  // 提取图片URL
+  // 提取图片URL（优先使用original，其次url）
   const images = imageList
-    .map((img: any) => img.url_default || img.url || '')
+    .map((img: any) => img.original || img.url || '')
     .filter(Boolean)
 
   // 提取互动数据（极致了API的优势）
-  const authorName = userInfo.nick_name || userInfo.nickname || ''
-  const viewCount = parseInt(noteInfo.view_count || noteData.interact_info?.read_count || '0')
-  const likedCount = parseInt(noteInfo.liked_count || noteData.interact_info?.liked_count || '0')
-  const collectedCount = parseInt(noteInfo.collected_count || noteData.interact_info?.collected_count || '0')
-  const commentCount = parseInt(noteInfo.comment_count || noteData.interact_info?.comment_count || '0')
-  const publishTime = noteInfo.time || noteInfo.publish_time || ''
+  const authorName = userInfo.nickname || userInfo.name || ''
+  const viewCount = parseInt(noteData.view_count || '0')
+  const likedCount = parseInt(noteData.liked_count || '0')
+  const collectedCount = parseInt(noteData.collected_count || '0')
+  const commentCount = parseInt(noteData.comments_count || '0')
+
+  // 转换时间戳为日期字符串
+  const timestamp = noteData.time || noteData.create_time || 0
+  const publishTime = timestamp ? new Date(timestamp * 1000).toISOString().split('T')[0] : ''
 
   console.log('[快捷保存-极致了] 解析成功 - 标题:', title, '图片数:', images.length)
   console.log('[快捷保存-极致了] ✅ 完整数据 - 作者:', authorName, '浏览:', viewCount, '点赞:', likedCount)
