@@ -199,9 +199,19 @@ async function parseXiaohongshuWithJizhile(url: string) {
     bodyContent = content
   }
 
-  // 提取图片URL（优先使用original，其次url）
+  // 提取图片URL（优先使用url，避免HEIF格式和签名过期问题）
   const images = imageList
-    .map((img: any) => img.original || img.url || '')
+    .map((img: any) => {
+      // 优先使用 url（已处理为JPEG），如果没有则尝试 original
+      let imageUrl = img.url || img.original || ''
+
+      // 如果URL包含HEIF格式，转换为JPEG
+      if (imageUrl.includes('format/heif')) {
+        imageUrl = imageUrl.replace(/format\/heif/g, 'format/jpg')
+      }
+
+      return imageUrl
+    })
     .filter(Boolean)
 
   // 提取互动数据（极致了API的优势）
