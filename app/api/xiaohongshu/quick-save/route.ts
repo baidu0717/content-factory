@@ -199,18 +199,24 @@ async function parseXiaohongshuWithJizhile(url: string) {
     bodyContent = content
   }
 
-  // 提取图片URL（优先使用url，避免HEIF格式和签名过期问题）
+  // 提取图片URL（构建简化URL，去掉签名参数避免过期）
   const images = imageList
     .map((img: any) => {
-      // 优先使用 url（已处理为JPEG），如果没有则尝试 original
+      // 优先使用 url，如果没有则尝试 original
       let imageUrl = img.url || img.original || ''
 
-      // 如果URL包含HEIF格式，转换为JPEG
-      if (imageUrl.includes('format/heif')) {
-        imageUrl = imageUrl.replace(/format\/heif/g, 'format/jpg')
-      }
+      if (!imageUrl) return ''
 
-      return imageUrl
+      // 提取基础URL（去掉所有参数）
+      const baseUrl = imageUrl.split('?')[0]
+
+      // 构建简化URL：只保留基本的imageView参数，去掉签名
+      // 格式：https://sns-xxx.rednotecdn.com/path?imageView2/2/w/1440/format/jpg
+      const simpleUrl = `${baseUrl}?imageView2/2/w/1440/format/jpg`
+
+      console.log('[快捷保存-极致了] 简化图片URL:', simpleUrl.substring(0, 100) + '...')
+
+      return simpleUrl
     })
     .filter(Boolean)
 
