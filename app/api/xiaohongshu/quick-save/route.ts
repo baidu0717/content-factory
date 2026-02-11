@@ -221,20 +221,35 @@ async function downloadImage(url: string): Promise<Buffer> {
     console.log('[图片下载] 转换后:', processedUrl)
   }
 
-  console.log('[图片下载] 下载图片:', processedUrl)
-  const response = await fetch(processedUrl, {
-    headers: {
-      'Referer': 'https://www.xiaohongshu.com/',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+  console.log('[图片下载] 下载图片:', processedUrl.substring(0, 80) + '...')
+
+  // 创建AbortController用于超时控制
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000) // 30秒超时
+
+  try {
+    const response = await fetch(processedUrl, {
+      headers: {
+        'Referer': 'https://www.xiaohongshu.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      },
+      signal: controller.signal
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
     }
-  })
 
-  if (!response.ok) {
-    throw new Error(`图片下载失败: ${response.status}`)
+    const arrayBuffer = await response.arrayBuffer()
+    clearTimeout(timeout)
+    return Buffer.from(arrayBuffer)
+  } catch (error: any) {
+    clearTimeout(timeout)
+    if (error.name === 'AbortError') {
+      throw new Error('下载超时（30秒）')
+    }
+    throw error
   }
-
-  const arrayBuffer = await response.arrayBuffer()
-  return Buffer.from(arrayBuffer)
 }
 
 /**
@@ -256,18 +271,20 @@ async function processImageWithRetry(
   try {
     console.log(`[图片处理] 开始处理第 ${index + 1}/${totalCount} 张图片...`)
 
-    // 1. 下载图片（最多重试3次）
+    // 1. 下载图片（最多重试5次，提高成功率）
     let imageBuffer: Buffer | null = null
-    for (let retry = 0; retry < 3; retry++) {
+    for (let retry = 0; retry < 5; retry++) {
       try {
         imageBuffer = await downloadImage(imageUrl)
         console.log(`[图片处理] 图片 ${index + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
         break
-      } catch (error) {
-        if (retry < 2) {
-          console.log(`[图片处理] 图片 ${index + 1} 下载失败，${retry + 1}/3 次重试...`)
-          await delay(1000) // 等待1秒后重试
+      } catch (error: any) {
+        const errorMsg = error?.message || String(error)
+        if (retry < 4) {
+          console.log(`[图片处理] 图片 ${index + 1} 下载失败(${errorMsg})，${retry + 1}/5 次重试...`)
+          await delay(2000) // 等待2秒后重试（增加延迟避免频繁请求）
         } else {
+          console.error(`[图片处理] 图片 ${index + 1} 下载最终失败: ${errorMsg}`)
           throw error
         }
       }
