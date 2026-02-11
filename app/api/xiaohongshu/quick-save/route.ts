@@ -88,13 +88,18 @@ async function parseXiaohongshuWithJizhile(url: string) {
   const { noteId } = await getFullUrlAndNoteId(url)
 
   console.log('[快捷保存-极致了] 调用极致了API...')
-  const apiUrl = `${JIZHILE_API_BASE}?type=11&note_id=${noteId}&key=${JIZHILE_API_KEY}`
+  console.log('[快捷保存-极致了] note_id:', noteId)
 
-  const response = await fetch(apiUrl, {
-    method: 'GET',
+  const response = await fetch(JIZHILE_API_BASE, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json'
-    }
+    },
+    body: JSON.stringify({
+      type: 11,
+      note_id: noteId,
+      key: JIZHILE_API_KEY
+    })
   })
 
   if (!response.ok) {
