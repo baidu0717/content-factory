@@ -146,18 +146,22 @@ async function parseXiaohongshu(url: string) {
   if (content) {
     // 先按换行符分割，取第一行
     const firstLine = content.split('\n')[0]
-    // 如果第一行太长（超过50字符），智能截断
-    if (firstLine.length > 50) {
-      // 在前50个字符中找到合适的截断点（句号、感叹号、问号、或空格）
-      const truncated = firstLine.substring(0, 50)
+
+    // 优先在 ||| 处截断（小红书常用的标题分隔符）
+    const pipeIndex = firstLine.indexOf('|||')
+    if (pipeIndex > 0 && pipeIndex <= 50) {
+      title = firstLine.substring(0, pipeIndex).trim()
+    } else if (firstLine.length > 30) {
+      // 如果第一行太长（超过30字符），智能截断
+      const truncated = firstLine.substring(0, 30)
       const breakPoints = [
         truncated.lastIndexOf('。'),
         truncated.lastIndexOf('！'),
         truncated.lastIndexOf('？'),
-        truncated.lastIndexOf('|||'),
+        truncated.lastIndexOf('，'),
         truncated.lastIndexOf(' ')
       ]
-      const breakPoint = Math.max(...breakPoints.filter(p => p > 20)) // 至少保留20个字符
+      const breakPoint = Math.max(...breakPoints.filter(p => p > 10)) // 至少保留10个字符
       title = breakPoint > 0 ? firstLine.substring(0, breakPoint + 1) : truncated + '...'
     } else {
       title = firstLine
