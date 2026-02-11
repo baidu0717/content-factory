@@ -471,7 +471,7 @@ async function downloadImage(url: string): Promise<Buffer> {
 
   // 创建AbortController用于超时控制
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 30000) // 30秒超时
+  const timeout = setTimeout(() => controller.abort(), 60000) // 60秒超时（提高容错）
 
   try {
     const response = await fetch(processedUrl, {
@@ -492,7 +492,7 @@ async function downloadImage(url: string): Promise<Buffer> {
   } catch (error: any) {
     clearTimeout(timeout)
     if (error.name === 'AbortError') {
-      throw new Error('下载超时（30秒）')
+      throw new Error('下载超时（60秒）')
     }
     throw error
   }
@@ -597,8 +597,20 @@ async function processImages(imageUrls: string[], appToken: string): Promise<Arr
   }
 
   const successCount = results.filter(token => token !== null).length
+  const failedCount = imageUrls.length - successCount
+
   console.log(`[图片处理] 共成功处理 ${successCount}/${imageUrls.length} 张图片`)
   console.log(`[图片处理] 结果数组:`, results.map((t, i) => t ? `图${i+1}:✓` : `图${i+1}:✗`).join(', '))
+
+  // 如果有失败的图片，详细列出
+  if (failedCount > 0) {
+    console.error(`[图片处理] ⚠️ 有 ${failedCount} 张图片处理失败！`)
+    results.forEach((token, index) => {
+      if (token === null) {
+        console.error(`[图片处理] ❌ 第 ${index + 1} 张图片失败，URL: ${imageUrls[index]}`)
+      }
+    })
+  }
 
   return results
 }
@@ -666,6 +678,14 @@ async function saveToFeishu(
     if (remainingTokens.length > 0) {
       fields['后续图片'] = remainingTokens
       console.log('[快捷保存-飞书] 后续图片(图3+):', remainingTokens.length, '张')
+      console.log('[快捷保存-飞书] 后续图片详情:', remainingTokens.map((t, i) => `图${i+3}:${t.file_token.substring(0, 20)}...`).join(', '))
+
+      // 检查是否有图片被过滤掉
+      const originalSlice = fileTokens.slice(2)
+      const nullCount = originalSlice.filter(t => t === null).length
+      if (nullCount > 0) {
+        console.warn(`[快捷保存-飞书] ⚠️ 后续图片中有 ${nullCount} 张失败，从第3张开始的索引: ${originalSlice.map((t, i) => t === null ? i+3 : null).filter(x => x !== null).join(', ')}`)
+      }
     }
   }
 
