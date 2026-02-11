@@ -398,8 +398,10 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
- * 解析小红书链接（统一入口 - 自动回退机制）
- * 优先使用极致了API（完整数据），失败则回退到哼哼猫API（免费但数据不全）
+ * 解析小红书链接（统一入口 - 三重容错机制）
+ * 1. 第一次尝试极致了API（完整数据）
+ * 2. 失败后等待2秒，重试极致了API（应对临时波动）
+ * 3. 两次都失败，降级到哼哼猫API（免费但数据不全）
  */
 async function parseXiaohongshu(url: string): Promise<{
   title: string
@@ -416,37 +418,55 @@ async function parseXiaohongshu(url: string): Promise<{
   apiError?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
-  console.log('[快捷保存] 策略: 优先极致了(完整数据) → 回退哼哼猫(免费)')
+  console.log('[快捷保存] 策略: 极致了(第1次) → 极致了(第2次重试) → 哼哼猫(降级)')
 
   // 尝试1: 极致了API（优先）
   try {
-    console.log('[快捷保存] 🎯 尝试使用极致了API...')
+    console.log('[快捷保存] 🎯 尝试使用极致了API（第1次）...')
     const result = await parseXiaohongshuWithJizhile(url)
     console.log('[快捷保存] ✅ 极致了API成功！使用完整数据')
     return {
       ...result,
       apiUsed: 'jizhile'
     }
-  } catch (jizhileError: any) {
-    const errorMsg = jizhileError?.message || String(jizhileError)
-    console.warn('[快捷保存] ⚠️  极致了API失败:', errorMsg)
-    console.warn('[快捷保存] 准备回退到哼哼猫API...')
+  } catch (jizhileError1: any) {
+    const errorMsg1 = jizhileError1?.message || String(jizhileError1)
+    console.warn('[快捷保存] ⚠️  极致了API第1次失败:', errorMsg1)
+    console.warn('[快捷保存] 等待2秒后重试...')
 
-    // 尝试2: 哼哼猫API（备用）
+    // 等待2秒，避免频繁请求
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // 尝试2: 极致了API（重试）
     try {
-      console.log('[快捷保存] 🔄 使用哼哼猫API...')
-      const result = await parseXiaohongshuWithHenghengmao(url)
-      console.log('[快捷保存] ✅ 哼哼猫API成功！数据不全，需手动填写')
+      console.log('[快捷保存] 🔄 重试极致了API（第2次）...')
+      const result = await parseXiaohongshuWithJizhile(url)
+      console.log('[快捷保存] ✅ 极致了API重试成功！使用完整数据')
       return {
         ...result,
-        apiUsed: 'henghengmao',
-        apiError: `极致了失败: ${errorMsg}`
+        apiUsed: 'jizhile'
       }
-    } catch (henghengmaoError: any) {
-      const henghengmaoMsg = henghengmaoError?.message || String(henghengmaoError)
-      console.error('[快捷保存] ❌ 哼哼猫API也失败:', henghengmaoMsg)
-      console.error('[快捷保存] 所有API都失败，无法继续')
-      throw new Error(`解析失败 - 极致了: ${errorMsg}, 哼哼猫: ${henghengmaoMsg}`)
+    } catch (jizhileError2: any) {
+      const errorMsg2 = jizhileError2?.message || String(jizhileError2)
+      console.warn('[快捷保存] ⚠️  极致了API第2次也失败:', errorMsg2)
+      console.warn('[快捷保存] 准备降级到哼哼猫API...')
+
+      // 尝试3: 哼哼猫API（最终备用）
+      try {
+        console.log('[快捷保存] 🆘 降级使用哼哼猫API...')
+        const result = await parseXiaohongshuWithHenghengmao(url)
+        console.log('[快捷保存] ✅ 哼哼猫API成功！数据不全，需手动填写')
+        return {
+          ...result,
+          apiUsed: 'henghengmao',
+          apiError: `极致了2次失败: (1)${errorMsg1}, (2)${errorMsg2}`
+        }
+      } catch (henghengmaoError: any) {
+        const henghengmaoMsg = henghengmaoError?.message || String(henghengmaoError)
+        console.error('[快捷保存] ❌ 哼哼猫API也失败:', henghengmaoMsg)
+        console.error('[快捷保存] 所有API都失败，无法继续')
+        throw new Error(`解析失败 - 极致了(2次): ${errorMsg1}, ${errorMsg2}; 哼哼猫: ${henghengmaoMsg}`)
+      }
     }
   }
 }
