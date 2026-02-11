@@ -141,8 +141,10 @@ async function parseXiaohongshu(url: string) {
   }
   const tags = tagMatches.join(' ')
 
-  // 提取标题（智能截取）
+  // 提取标题和纯正文（智能截取）
   let title = ''
+  let bodyContent = content // 纯正文（不含标题）
+
   if (content) {
     // 先按换行符分割，取第一行
     const firstLine = content.split('\n')[0]
@@ -151,6 +153,10 @@ async function parseXiaohongshu(url: string) {
     const pipeIndex = firstLine.indexOf('|||')
     if (pipeIndex > 0 && pipeIndex <= 50) {
       title = firstLine.substring(0, pipeIndex).trim()
+      // 正文：去掉标题和|||后的部分
+      const restOfFirstLine = firstLine.substring(pipeIndex + 3).trim()
+      const restLines = content.split('\n').slice(1).join('\n')
+      bodyContent = (restOfFirstLine + (restLines ? '\n' + restLines : '')).trim()
     } else if (firstLine.length > 30) {
       // 如果第一行太长（超过30字符），智能截断
       const truncated = firstLine.substring(0, 30)
@@ -163,14 +169,26 @@ async function parseXiaohongshu(url: string) {
       ]
       const breakPoint = Math.max(...breakPoints.filter(p => p > 10)) // 至少保留10个字符
       title = breakPoint > 0 ? firstLine.substring(0, breakPoint + 1) : truncated + '...'
+      // 正文：去掉标题部分
+      const restOfFirstLine = firstLine.substring(breakPoint > 0 ? breakPoint + 1 : 30).trim()
+      const restLines = content.split('\n').slice(1).join('\n')
+      bodyContent = (restOfFirstLine + (restLines ? '\n' + restLines : '')).trim()
     } else {
+      // 第一行作为标题
       title = firstLine
+      // 正文：第二行开始
+      bodyContent = content.split('\n').slice(1).join('\n').trim()
     }
   }
 
-  // 如果仍然为空，使用默认值
+  // 如果标题仍然为空，使用默认值
   if (!title) {
     title = '小红书笔记'
+  }
+
+  // 如果正文为空，使用原始content（避免丢失内容）
+  if (!bodyContent) {
+    bodyContent = content
   }
 
   // 提取图片URL（从medias数组）
@@ -193,7 +211,7 @@ async function parseXiaohongshu(url: string) {
 
   return {
     title,
-    content,
+    content: bodyContent, // 使用纯正文（不含标题）
     tags,
     images,
     authorName,
