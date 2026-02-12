@@ -474,8 +474,13 @@ async function parseXiaohongshu(url: string): Promise<{
 /**
  * 下载图片（需要添加 Referer header，否则小红书服务器会返回 403）
  * 自动将 HEIF 格式转换为 JPEG（修改 URL 参数让小红书服务器返回 JPEG）
+ *
+ * 🔧 优化策略：
+ * 1. 增加超时时间到120秒（极致了API的图片CDN可能较慢）
+ * 2. 添加多个备用User-Agent（避免被CDN识别）
+ * 3. 添加详细的错误日志
  */
-async function downloadImage(url: string): Promise<Buffer> {
+async function downloadImage(url: string, retryCount: number = 0): Promise<Buffer> {
   // 将 HEIF 格式的图片 URL 转换为 JPEG 格式
   // 小红书 CDN URL 格式: https://sns-img-qc.xhscdn.com/xxx?imageView2/.../format/heif/...
   // 转换策略：将 format/heif 替换为 format/jpg
@@ -483,37 +488,72 @@ async function downloadImage(url: string): Promise<Buffer> {
   if (url.includes('format/heif')) {
     processedUrl = url.replace(/format\/heif/g, 'format/jpg')
     console.log('[图片下载] 检测到HEIF格式，转换为JPEG')
-    console.log('[图片下载] 原始URL:', url)
-    console.log('[图片下载] 转换后:', processedUrl)
+    console.log('[图片下载] 原始URL:', url.substring(0, 80) + '...')
+    console.log('[图片下载] 转换后:', processedUrl.substring(0, 80) + '...')
   }
 
-  console.log('[图片下载] 下载图片:', processedUrl.substring(0, 80) + '...')
+  console.log('[图片下载] 下载图片 (尝试 #' + (retryCount + 1) + '):', processedUrl.substring(0, 80) + '...')
+
+  // 多个User-Agent轮换（避免被识别为爬虫）
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0'
+  ]
+  const userAgent = userAgents[retryCount % userAgents.length]
 
   // 创建AbortController用于超时控制
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60000) // 60秒超时（提高容错）
+  const timeout = setTimeout(() => controller.abort(), 120000) // 120秒超时（加倍容错）
 
   try {
+    const startTime = Date.now()
+
     const response = await fetch(processedUrl, {
       headers: {
         'Referer': 'https://www.xiaohongshu.com/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': userAgent,
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
       },
       signal: controller.signal
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
+      const errorMsg = `HTTP ${response.status} ${response.statusText}`
+      console.error('[图片下载] ❌ 请求失败:', errorMsg)
+      console.error('[图片下载] 响应头:', Object.fromEntries(response.headers.entries()))
+      throw new Error(errorMsg)
     }
 
     const arrayBuffer = await response.arrayBuffer()
+    const duration = Date.now() - startTime
+    const sizeKB = (arrayBuffer.byteLength / 1024).toFixed(2)
+
     clearTimeout(timeout)
+
+    console.log(`[图片下载] ✅ 下载成功: ${sizeKB}KB, 耗时${duration}ms`)
+
     return Buffer.from(arrayBuffer)
+
   } catch (error: any) {
     clearTimeout(timeout)
+
     if (error.name === 'AbortError') {
-      throw new Error('下载超时（60秒）')
+      console.error('[图片下载] ❌ 下载超时（120秒）')
+      console.error('[图片下载] URL可能过长或CDN响应慢，建议检查URL有效性')
+      throw new Error('下载超时（120秒）')
     }
+
+    // 记录详细的错误信息
+    console.error('[图片下载] ❌ 下载失败:', error.message)
+    console.error('[图片下载] 错误类型:', error.name)
+    console.error('[图片下载] User-Agent:', userAgent)
+
     throw error
   }
 }
@@ -541,21 +581,25 @@ async function processImageWithRetry(
     console.log(`[图片处理] 开始处理第 ${index + 1}/${totalCount} 张图片...`)
     console.log(`[图片处理] 图片 ${index + 1} URL: ${imagePreview}`)
 
-    // 1. 下载图片（最多重试5次，提高成功率）
+    // 1. 下载图片（最多重试10次，提高成功率）
     let imageBuffer: Buffer | null = null
-    for (let retry = 0; retry < 5; retry++) {
+    const MAX_RETRIES = 10 // 从5次增加到10次
+    for (let retry = 0; retry < MAX_RETRIES; retry++) {
       try {
-        imageBuffer = await downloadImage(imageUrl)
+        imageBuffer = await downloadImage(imageUrl, retry)
         console.log(`[图片处理] 图片 ${index + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
         break
       } catch (error: any) {
         lastError = error
         const errorMsg = error?.message || String(error)
-        if (retry < 4) {
-          console.log(`[图片处理] 图片 ${index + 1} 下载失败(${errorMsg})，${retry + 1}/5 次重试...`)
-          await delay(2000) // 等待2秒后重试（增加延迟避免频繁请求）
+
+        if (retry < MAX_RETRIES - 1) {
+          // 渐进式重试延迟：第1次等2秒，第2次等3秒，第3次等5秒...
+          const delayTime = Math.min(2000 + retry * 1000, 10000) // 最多等10秒
+          console.log(`[图片处理] 图片 ${index + 1} 下载失败(${errorMsg})，等待${delayTime/1000}秒后重试 (${retry + 1}/${MAX_RETRIES})...`)
+          await delay(delayTime)
         } else {
-          console.error(`[图片处理] ❌❌❌ 图片 ${index + 1} 下载5次全部失败`)
+          console.error(`[图片处理] ❌❌❌ 图片 ${index + 1} 下载${MAX_RETRIES}次全部失败`)
           console.error(`[图片处理] 最后错误: ${errorMsg}`)
           console.error(`[图片处理] 失败URL: ${imagePreview}`)
           throw error
@@ -739,7 +783,18 @@ async function saveToFeishu(
   }
 
   const totalSaved = [fileTokens[0], fileTokens[1], ...fileTokens.slice(2)].filter(Boolean).length
-  console.log('[快捷保存-飞书] 共保存', totalSaved, '个图片到附件字段')
+  const totalImages = fileTokens.length
+  const hasFailedImages = totalSaved < totalImages
+
+  console.log('[快捷保存-飞书] 共保存', totalSaved, '/', totalImages, '个图片到附件字段')
+
+  // 如果有图片失败，在正文末尾添加警告标记
+  if (hasFailedImages) {
+    const failedCount = totalImages - totalSaved
+    const warningText = `\n\n⚠️ 图片上传失败 ${failedCount}/${totalImages} 张，请重新采集此笔记`
+    fields['正文'] = (content || '') + warningText
+    console.warn('[快捷保存-飞书] ⚠️⚠️⚠️ 已在正文中添加失败标记')
+  }
 
   // 打印所有字段数据用于调试
   console.log('[快捷保存-飞书] 字段数据:')
@@ -751,6 +806,9 @@ async function saveToFeishu(
   console.log('  - 封面:', fileTokens[0] ? '✓' : '✗')
   console.log('  - 图片2:', fileTokens[1] ? '✓' : '✗')
   console.log('  - 后续图片:', fileTokens.length > 2 ? `${fileTokens.slice(2).filter(Boolean).length}张` : '无')
+  if (hasFailedImages) {
+    console.log('  - ⚠️ 失败标记:', '已添加到正文末尾')
+  }
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
