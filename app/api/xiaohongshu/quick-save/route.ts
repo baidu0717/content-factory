@@ -534,8 +534,12 @@ async function processImageWithRetry(
   appToken: string,
   totalCount: number
 ): Promise<string | null> {
+  const imagePreview = imageUrl.substring(0, 80) + '...'
+  let lastError: any = null
+
   try {
     console.log(`[图片处理] 开始处理第 ${index + 1}/${totalCount} 张图片...`)
+    console.log(`[图片处理] 图片 ${index + 1} URL: ${imagePreview}`)
 
     // 1. 下载图片（最多重试5次，提高成功率）
     let imageBuffer: Buffer | null = null
@@ -545,19 +549,22 @@ async function processImageWithRetry(
         console.log(`[图片处理] 图片 ${index + 1} 下载成功，大小: ${imageBuffer.length} bytes`)
         break
       } catch (error: any) {
+        lastError = error
         const errorMsg = error?.message || String(error)
         if (retry < 4) {
           console.log(`[图片处理] 图片 ${index + 1} 下载失败(${errorMsg})，${retry + 1}/5 次重试...`)
           await delay(2000) // 等待2秒后重试（增加延迟避免频繁请求）
         } else {
-          console.error(`[图片处理] 图片 ${index + 1} 下载最终失败: ${errorMsg}`)
+          console.error(`[图片处理] ❌❌❌ 图片 ${index + 1} 下载5次全部失败`)
+          console.error(`[图片处理] 最后错误: ${errorMsg}`)
+          console.error(`[图片处理] 失败URL: ${imagePreview}`)
           throw error
         }
       }
     }
 
     if (!imageBuffer) {
-      throw new Error('下载失败')
+      throw new Error('下载失败（未知原因）')
     }
 
     // 2. 上传到飞书
@@ -567,8 +574,26 @@ async function processImageWithRetry(
     console.log(`[图片处理] ✅ 第 ${index + 1} 张图片处理完成，file_token: ${fileToken}`)
     return fileToken
 
-  } catch (error) {
-    console.error(`[图片处理] ❌ 第 ${index + 1} 张图片处理失败:`, error)
+  } catch (error: any) {
+    const errorMsg = error?.message || String(error)
+    console.error(`[图片处理] ❌❌❌ 第 ${index + 1} 张图片最终处理失败`)
+    console.error(`[图片处理] 错误类型: ${error?.name || 'Unknown'}`)
+    console.error(`[图片处理] 错误信息: ${errorMsg}`)
+    console.error(`[图片处理] 图片URL: ${imagePreview}`)
+
+    // 分析失败原因
+    if (errorMsg.includes('HTTP 403')) {
+      console.error(`[图片处理] 💡 原因分析: 小红书CDN拒绝访问（可能URL签名过期）`)
+    } else if (errorMsg.includes('HTTP 404')) {
+      console.error(`[图片处理] 💡 原因分析: 图片不存在或已删除`)
+    } else if (errorMsg.includes('超时')) {
+      console.error(`[图片处理] 💡 原因分析: 下载超时（网络慢或CDN限速）`)
+    } else if (errorMsg.includes('刷新token失败')) {
+      console.error(`[图片处理] 💡 原因分析: 飞书Token问题（需重新授权）`)
+    } else {
+      console.error(`[图片处理] 💡 原因分析: 未知错误，建议重新采集`)
+    }
+
     return null
   }
 }
@@ -624,12 +649,16 @@ async function processImages(imageUrls: string[], appToken: string): Promise<Arr
 
   // 如果有失败的图片，详细列出
   if (failedCount > 0) {
-    console.error(`[图片处理] ⚠️ 有 ${failedCount} 张图片处理失败！`)
+    console.error(`[图片处理] ⚠️⚠️⚠️ 有 ${failedCount} 张图片处理失败！⚠️⚠️⚠️`)
+    console.error(`[图片处理] 失败原因可能：1.极致了API图片URL失效 2.网络波动 3.CDN限制`)
     results.forEach((token, index) => {
       if (token === null) {
-        console.error(`[图片处理] ❌ 第 ${index + 1} 张图片失败，URL: ${imageUrls[index]}`)
+        console.error(`[图片处理] ❌❌❌ 第 ${index + 1} 张图片失败`)
+        console.error(`[图片处理] 失败URL: ${imageUrls[index]}`)
+        console.error(`[图片处理] 建议：重新采集该笔记，或检查图片URL是否有效`)
       }
     })
+    console.error(`[图片处理] 💡 提示：查看上面的详细错误日志了解具体失败原因`)
   }
 
   return results
@@ -782,20 +811,51 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 如果是异步模式，立即返回成功响应，后台继续处理
+    // 如果是异步模式，先快速解析笔记信息，返回预览，再后台处理图片
     if (isAsync) {
-      console.log('[快捷保存] 🚀 异步模式：立即返回，后台处理')
+      console.log('[快捷保存] 🚀 异步模式：快速解析 + 后台处理')
 
-      // 在后台异步处理（不等待）
-      processAsync(url, finalAppToken, finalTableId, startTime).catch(error => {
-        console.error('[快捷保存-异步] 后台处理失败:', error)
-      })
+      try {
+        // 快速解析笔记信息（不下载图片，只获取元数据）
+        const { title, images, authorName, viewCount, apiUsed } = await parseXiaohongshu(url)
 
-      return NextResponse.json({
-        success: true,
-        message: `✅ 收到请求，正在后台保存...\n\n稍后请刷新飞书表格查看结果`,
-        data: { async: true }
-      })
+        // 构建API使用提示
+        let apiInfo = ''
+        if (apiUsed === 'jizhile') {
+          apiInfo = '\n🎯 极致了API'
+        } else if (apiUsed === 'henghengmao') {
+          apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
+        }
+
+        // 在后台异步处理（不等待）
+        processAsync(url, finalAppToken, finalTableId, startTime).catch(error => {
+          console.error('[快捷保存-异步] 后台处理失败:', error)
+        })
+
+        return NextResponse.json({
+          success: true,
+          message: `✅ 已接收，正在后台保存...${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}\n📸 准备保存 ${images.length} 张图片\n👁️ ${viewCount} 浏览\n\n⏳ 图片上传中，约需${Math.ceil(images.length / 4) * 2}秒\n请稍后刷新飞书表格查看`,
+          data: {
+            async: true,
+            title,
+            authorName,
+            imageCount: images.length,
+            viewCount,
+            apiUsed
+          }
+        })
+      } catch (error) {
+        // 如果快速解析失败，仍然返回简单的成功消息
+        processAsync(url, finalAppToken, finalTableId, startTime).catch(err => {
+          console.error('[快捷保存-异步] 后台处理失败:', err)
+        })
+
+        return NextResponse.json({
+          success: true,
+          message: `✅ 收到请求，正在后台保存...\n\n稍后请刷新飞书表格查看结果`,
+          data: { async: true }
+        })
+      }
     }
 
     // 同步模式（原有逻辑）
