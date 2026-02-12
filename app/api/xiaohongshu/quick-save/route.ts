@@ -504,8 +504,10 @@ async function downloadImage(url: string, retryCount: number = 0): Promise<Buffe
   const userAgent = userAgents[retryCount % userAgents.length]
 
   // 创建AbortController用于超时控制
+  // 降低单次超时到30秒，避免阻塞其他笔记采集
+  // 通过10次重试来提高成功率，而不是延长单次等待时间
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 120000) // 120秒超时（加倍容错）
+  const timeout = setTimeout(() => controller.abort(), 30000) // 30秒超时（快速失败）
 
   try {
     const startTime = Date.now()
@@ -784,17 +786,8 @@ async function saveToFeishu(
 
   const totalSaved = [fileTokens[0], fileTokens[1], ...fileTokens.slice(2)].filter(Boolean).length
   const totalImages = fileTokens.length
-  const hasFailedImages = totalSaved < totalImages
 
   console.log('[快捷保存-飞书] 共保存', totalSaved, '/', totalImages, '个图片到附件字段')
-
-  // 如果有图片失败，在正文末尾添加警告标记
-  if (hasFailedImages) {
-    const failedCount = totalImages - totalSaved
-    const warningText = `\n\n⚠️ 图片上传失败 ${failedCount}/${totalImages} 张，请重新采集此笔记`
-    fields['正文'] = (content || '') + warningText
-    console.warn('[快捷保存-飞书] ⚠️⚠️⚠️ 已在正文中添加失败标记')
-  }
 
   // 打印所有字段数据用于调试
   console.log('[快捷保存-飞书] 字段数据:')
@@ -806,9 +799,6 @@ async function saveToFeishu(
   console.log('  - 封面:', fileTokens[0] ? '✓' : '✗')
   console.log('  - 图片2:', fileTokens[1] ? '✓' : '✗')
   console.log('  - 后续图片:', fileTokens.length > 2 ? `${fileTokens.slice(2).filter(Boolean).length}张` : '无')
-  if (hasFailedImages) {
-    console.log('  - ⚠️ 失败标记:', '已添加到正文末尾')
-  }
 
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
@@ -946,26 +936,35 @@ export async function POST(request: NextRequest) {
 
     // 4. 返回成功消息
     const successImages = fileTokens.filter(token => token !== null).length
+    const hasFailedImages = successImages < images.length
 
     // 构建API使用提示
     let apiInfo = ''
     if (apiUsed === 'jizhile') {
-      apiInfo = '\n🎯 极致了API (完整数据)'
+      apiInfo = '\n🎯 极致了API'
     } else if (apiUsed === 'henghengmao') {
       apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
-      if (apiError) {
-        apiInfo += `\n💡 ${apiError.split(':')[0]}`
-      }
+    }
+
+    // 图片状态提示
+    let imageInfo = ''
+    if (hasFailedImages) {
+      const failedCount = images.length - successImages
+      imageInfo = `\n\n⚠️ 图片上传失败 ${failedCount}/${images.length} 张\n💡 建议：立即重新运行快捷指令\n（链接已在剪贴板，直接运行即可）`
+    } else {
+      imageInfo = `\n📸 ${successImages} 张图片全部保存成功`
     }
 
     return NextResponse.json({
       success: true,
-      message: `✅ 保存成功!${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}\n📸 ${successImages}/${images.length}张图片\n👁️ ${viewCount} 浏览\n⏱️ 耗时${duration}ms`,
+      message: `✅ 保存${hasFailedImages ? '部分' : ''}成功!${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}${imageInfo}\n👁️ ${viewCount} 浏览\n⏱️ 耗时${duration}ms`,
       data: {
         title,
         authorName,
         imageCount: successImages,
         totalImages: images.length,
+        failedImages: images.length - successImages,
+        hasFailedImages,
         viewCount,
         likedCount,
         collectedCount,
