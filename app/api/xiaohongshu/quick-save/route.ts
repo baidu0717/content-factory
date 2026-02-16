@@ -726,14 +726,15 @@ async function saveToFeishu(
   likedCount: number,
   collectedCount: number,
   commentCount: number,
-  publishTime: string
+  publishTime: string,
+  remark?: string  // 新增：备注字段（可选）
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
 
   const appAccessToken = await getAppAccessToken()
 
   // 构建记录字段
-  // 列顺序：笔记链接、作者昵称、封面、图片2、后续图片、标题、正文、话题标签、浏览数、点赞数、收藏数、评论数、发布时间、复刻情况
+  // 列顺序：笔记链接、作者昵称、封面、图片2、后续图片、标题、正文、话题标签、浏览数、点赞数、收藏数、评论数、发布时间、备注、复刻情况
   const fields: any = {
     '笔记链接': url,                     // 第1列
     '作者昵称': authorName,              // 第2列
@@ -746,7 +747,14 @@ async function saveToFeishu(
     '收藏数': String(collectedCount),    // 第11列
     '评论数': String(commentCount),      // 第12列
     '发布时间': String(publishTime)      // 第13列
-    // 第14列：复刻情况（按钮字段，需手动在飞书表格中创建）
+    // 第14列：备注（新增，可选）
+    // 第15列：复刻情况（按钮字段，需手动在飞书表格中创建）
+  }
+
+  // 添加备注字段（如果提供）
+  if (remark) {
+    fields['备注'] = remark
+    console.log('[快捷保存-飞书] 备注内容:', remark)
   }
 
   // 将图片保存到附件字段（使用 file_token，跳过失败的图片）
@@ -834,9 +842,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { url, appToken, tableId, async: isAsync } = body
+    const { url, appToken, tableId, async: isAsync, remark } = body  // 新增：remark
 
-    console.log('[快捷保存] 收到请求:', { url, appToken, tableId, async: isAsync })
+    console.log('[快捷保存] 收到请求:', { url, appToken, tableId, async: isAsync, remark })
     console.log('[快捷保存] 环境变量 DEFAULT_APP_TOKEN:', process.env.FEISHU_DEFAULT_APP_TOKEN)
     console.log('[快捷保存] 环境变量 DEFAULT_TABLE_ID:', process.env.FEISHU_DEFAULT_TABLE_ID)
 
@@ -876,7 +884,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 在后台异步处理（不等待）
-        processAsync(url, finalAppToken, finalTableId, startTime).catch(error => {
+        processAsync(url, finalAppToken, finalTableId, startTime, remark).catch(error => {
           console.error('[快捷保存-异步] 后台处理失败:', error)
         })
 
@@ -894,7 +902,7 @@ export async function POST(request: NextRequest) {
         })
       } catch (error) {
         // 如果快速解析失败，仍然返回简单的成功消息
-        processAsync(url, finalAppToken, finalTableId, startTime).catch(err => {
+        processAsync(url, finalAppToken, finalTableId, startTime, remark).catch(err => {
           console.error('[快捷保存-异步] 后台处理失败:', err)
         })
 
@@ -927,7 +935,8 @@ export async function POST(request: NextRequest) {
       likedCount,
       collectedCount,
       commentCount,
-      publishTime
+      publishTime,
+      remark  // 新增：传递备注
     )
 
     const duration = Date.now() - startTime
@@ -989,7 +998,7 @@ export async function POST(request: NextRequest) {
 /**
  * 异步处理函数（后台执行）
  */
-async function processAsync(url: string, appToken: string, tableId: string, startTime: number) {
+async function processAsync(url: string, appToken: string, tableId: string, startTime: number, remark?: string) {
   try {
     console.log('[快捷保存-异步] 开始后台处理...')
 
@@ -1013,7 +1022,8 @@ async function processAsync(url: string, appToken: string, tableId: string, star
       likedCount,
       collectedCount,
       commentCount,
-      publishTime
+      publishTime,
+      remark  // 新增：传递备注
     )
 
     const duration = Date.now() - startTime
