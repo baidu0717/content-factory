@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
 // 极致了 API 配置（优先使用，数据完整）
@@ -886,10 +886,15 @@ export async function POST(request: NextRequest) {
           remark
         )
 
-        // 3. 图片在后台上传（不影响返回）
+        // 3. 图片在后台上传（响应发出后继续执行，使用 after() 防止被 Vercel 提前终止）
         if (images.length > 0 && recordId) {
-          processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
-            .catch(err => console.error('[快捷保存-图片后台] 失败:', err))
+          after(async () => {
+            try {
+              await processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
+            } catch (err) {
+              console.error('[快捷保存-图片后台] 失败:', err)
+            }
+          })
         }
 
         // 构建API提示
