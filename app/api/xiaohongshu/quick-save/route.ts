@@ -829,7 +829,7 @@ async function saveToFeishu(
     throw new Error(`保存失败: ${data.msg || '未知错误'}`)
   }
 
-  const recordId = data.data?.record_id
+  const recordId = data.data?.record?.record_id
   console.log('[快捷保存-飞书] 保存成功，记录 ID:', recordId)
   return { recordId }
 }
