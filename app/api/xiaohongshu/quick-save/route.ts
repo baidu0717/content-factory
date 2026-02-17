@@ -829,8 +829,9 @@ async function saveToFeishu(
     throw new Error(`保存失败: ${data.msg || '未知错误'}`)
   }
 
-  console.log('[快捷保存-飞书] 保存成功，记录 ID:', data.data?.record_id)
-  return data
+  const recordId = data.data?.record_id
+  console.log('[快捷保存-飞书] 保存成功，记录 ID:', recordId)
+  return { recordId }
 }
 
 /**
@@ -867,48 +868,45 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 如果是异步模式，先快速解析笔记信息，返回预览，再后台处理图片
+    // 同步模式：解析 + 保存记录（同步） + 图片上传（后台）
+    // 这样能立即返回成功/失败结果，也不会因为图片处理超时
     if (isAsync) {
-      console.log('[快捷保存] 🚀 异步模式：快速解析 + 后台处理')
+      console.log('[快捷保存] 🚀 混合模式：同步解析写入 + 后台上传图片')
 
       try {
-        // 快速解析笔记信息（不下载图片，只获取元数据）
-        const { title, images, authorName, viewCount, apiUsed } = await parseXiaohongshu(url)
+        // 1. 解析笔记信息（同步）
+        const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed } = await parseXiaohongshu(url)
 
-        // 构建API使用提示
-        let apiInfo = ''
-        if (apiUsed === 'jizhile') {
-          apiInfo = '\n🎯 极致了API'
-        } else if (apiUsed === 'henghengmao') {
-          apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
+        // 2. 先保存文字内容到飞书（不含图片，同步）
+        const { recordId } = await saveToFeishu(
+          finalAppToken, finalTableId,
+          title, content, tags,
+          [], // 图片先留空
+          url, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime,
+          remark
+        )
+
+        // 3. 图片在后台上传（不影响返回）
+        if (images.length > 0 && recordId) {
+          processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
+            .catch(err => console.error('[快捷保存-图片后台] 失败:', err))
         }
 
-        // 在后台异步处理（不等待）
-        processAsync(url, finalAppToken, finalTableId, startTime, remark).catch(error => {
-          console.error('[快捷保存-异步] 后台处理失败:', error)
-        })
+        // 构建API提示
+        let apiInfo = apiUsed === 'henghengmao' ? '\n⚠️ 哼哼猫API (互动数待填)' : '\n🎯 极致了API'
 
         return NextResponse.json({
           success: true,
-          message: `✅ 已接收，正在后台保存...${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}\n📸 准备保存 ${images.length} 张图片\n👁️ ${viewCount} 浏览\n\n⏳ 图片上传中，约需${Math.ceil(images.length / 4) * 2}秒\n请稍后刷新飞书表格查看`,
-          data: {
-            async: true,
-            title,
-            authorName,
-            imageCount: images.length,
-            viewCount,
-            apiUsed
-          }
+          message: `✅ 保存成功！${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}\n📸 ${images.length} 张图片后台上传中\n👁️ ${viewCount} 浏览`,
+          data: { async: true, title, authorName, imageCount: images.length, viewCount, apiUsed }
         })
       } catch (error) {
-        // 如果快速解析失败，仍然返回简单的成功消息
-        processAsync(url, finalAppToken, finalTableId, startTime, remark).catch(err => {
-          console.error('[快捷保存-异步] 后台处理失败:', err)
-        })
-
+        // 解析或写入失败，返回真实错误信息
+        const errMsg = error instanceof Error ? error.message : '未知错误'
+        console.error('[快捷保存] 失败:', errMsg)
         return NextResponse.json({
-          success: true,
-          message: `✅ 收到请求，正在后台保存...\n\n稍后请刷新飞书表格查看结果`,
+          success: false,
+          message: `❌ 保存失败：${errMsg}`,
           data: { async: true }
         })
       }
@@ -993,6 +991,70 @@ export async function POST(request: NextRequest) {
       message: `❌ 发生错误: ${error instanceof Error ? error.message : '未知错误'}`
     }, { status: 500 })
   }
+}
+
+/**
+ * 后台图片处理：上传图片并更新飞书记录
+ */
+async function processImagesAndUpdate(
+  recordId: string,
+  imageUrls: string[],
+  appToken: string,
+  tableId: string
+): Promise<void> {
+  console.log('[快捷保存-图片后台] 开始后台上传图片，记录ID:', recordId)
+
+  // 1. 上传图片获取 file_token
+  const fileTokens = await processImages(imageUrls, appToken)
+
+  const successCount = fileTokens.filter(t => t !== null).length
+  console.log(`[快捷保存-图片后台] 上传完成: ${successCount}/${imageUrls.length} 张成功`)
+
+  if (successCount === 0) {
+    console.error('[快捷保存-图片后台] 所有图片上传失败，跳过更新记录')
+    return
+  }
+
+  // 2. 构建图片字段
+  const fields: any = {}
+  if (fileTokens[0]) {
+    fields['封面'] = [{ file_token: fileTokens[0] }]
+  }
+  if (fileTokens[1]) {
+    fields['图片2'] = [{ file_token: fileTokens[1] }]
+  }
+  if (fileTokens.length > 2) {
+    const remaining = fileTokens
+      .slice(2)
+      .filter((t): t is string => t !== null)
+      .map(t => ({ file_token: t }))
+    if (remaining.length > 0) {
+      fields['后续图片'] = remaining
+    }
+  }
+
+  // 3. 更新飞书记录（添加图片）
+  const appAccessToken = await getAppAccessToken()
+  const response = await fetch(
+    `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${appAccessToken}`
+      },
+      body: JSON.stringify({ fields })
+    }
+  )
+
+  const data = await response.json()
+
+  if (data.code !== 0) {
+    console.error('[快捷保存-图片后台] 更新记录失败:', JSON.stringify(data))
+    throw new Error(`更新图片失败: ${data.msg || '未知错误'}`)
+  }
+
+  console.log(`[快捷保存-图片后台] ✅ 图片更新成功: ${successCount}/${imageUrls.length} 张`)
 }
 
 /**
