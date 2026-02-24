@@ -1,0 +1,12 @@
+/* 图片横排显示：3张一行 */
+.markdown-reading-view .internal-embed.image-embed {
+    display: inline-block;
+    vertical-align: top;
+    margin: 3px;
+    max-width: calc(33.33% - 6px);
+}
+
+.markdown-reading-view .internal-embed.image-embed img {
+    width: 100%;
+    height: auto;
+}
