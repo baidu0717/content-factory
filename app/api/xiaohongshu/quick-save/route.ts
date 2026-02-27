@@ -734,7 +734,7 @@ async function saveToFeishu(
   const appAccessToken = await getAppAccessToken()
 
   // 构建记录字段
-  // 列顺序：笔记链接、作者昵称、封面、图片2、后续图片、标题、正文、话题标签、浏览数、点赞数、收藏数、评论数、发布时间、备注、复刻情况
+  // 列顺序：笔记链接、作者昵称、封面、图片2、后续图片、标题、正文、话题标签、点赞数、收藏数、评论数、发布时间、备注、复刻情况
   const fields: any = {
     '笔记链接': url,                     // 第1列
     '作者昵称': authorName,              // 第2列
@@ -742,13 +742,12 @@ async function saveToFeishu(
     '标题': title,                       // 第6列
     '正文': content,                     // 第7列
     '话题标签': tags,                    // 第8列
-    '浏览数': String(viewCount),         // 第9列
-    '点赞数': String(likedCount),        // 第10列
-    '收藏数': String(collectedCount),    // 第11列
-    '评论数': String(commentCount),      // 第12列
-    '发布时间': String(publishTime)      // 第13列
-    // 第14列：备注（新增，可选）
-    // 第15列：复刻情况（按钮字段，需手动在飞书表格中创建）
+    '点赞数': String(likedCount),        // 第9列
+    '收藏数': String(collectedCount),    // 第10列
+    '评论数': String(commentCount),      // 第11列
+    '发布时间': String(publishTime)      // 第12列
+    // 第13列：备注（可选）
+    // 第14列：复刻情况（按钮字段，需手动在飞书表格中创建）
   }
 
   // 添加备注字段（如果提供）
@@ -804,6 +803,7 @@ async function saveToFeishu(
   console.log('  - 标题:', title)
   console.log('  - 正文长度:', content?.length || 0, '字符')
   console.log('  - 话题标签:', tags)
+  console.log('  - 点赞数:', likedCount, '收藏数:', collectedCount, '评论数:', commentCount)
   console.log('  - 封面:', fileTokens[0] ? '✓' : '✗')
   console.log('  - 图片2:', fileTokens[1] ? '✓' : '✗')
   console.log('  - 后续图片:', fileTokens.length > 2 ? `${fileTokens.slice(2).filter(Boolean).length}张` : '无')
