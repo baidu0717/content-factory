@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
-const REWRITE_MODEL = process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4-6'
+const REWRITE_MODEL = process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6'
 
 const client = new OpenAI({
   apiKey: OPENROUTER_API_KEY,
