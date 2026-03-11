@@ -1,5 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
+
+async function callOpenRouter(apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number): Promise<string> {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature,
+      top_p: 0.95,
+      max_tokens: maxTokens,
+    }),
+  })
+
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`${response.status} ${err}`)
+  }
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content?.trim() || ''
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,14 +50,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const client = new OpenAI({
-      apiKey: OPENROUTER_API_KEY,
-      baseURL: 'https://openrouter.ai/api/v1',
-      defaultHeaders: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-      },
-    })
-
     console.log('[内容改写] 开始改写，使用模型:', REWRITE_MODEL)
 
     let newTitle = title
@@ -50,18 +66,8 @@ export async function POST(request: NextRequest) {
 - 表情位置：建议在标题末尾或关键词后
 - 示例：这个宝藏好物太好用了[笑哭R] | 3个超小众景点[火R]人少景美
 `
-
         const fullPrompt = `${titlePrompt}\n\n${titleEmojiGuide}\n\n原标题：${title}\n\n新标题：`
-
-        const titleResponse = await client.chat.completions.create({
-          model: REWRITE_MODEL,
-          messages: [{ role: 'user', content: fullPrompt }],
-          temperature: 1.0,
-          top_p: 0.95,
-          max_tokens: 200,
-        })
-
-        newTitle = titleResponse.choices[0]?.message?.content?.trim() || title
+        newTitle = await callOpenRouter(OPENROUTER_API_KEY, REWRITE_MODEL, fullPrompt, 200, 1.0) || title
         console.log('[内容改写] 新标题:', newTitle)
       } catch (error) {
         console.error('[内容改写] 标题改写失败:', error)
@@ -93,18 +99,8 @@ export async function POST(request: NextRequest) {
    - 结尾：行动号召（[拿走R] [比心R] [冲鸭R]）
 4. 表情前后不需要空格，直接紧跟文字
 `
-
         const fullContentPrompt = `${contentPrompt}\n\n${emojiGuide}\n\n原正文：${content}\n\n请输出改写后的正文（记得添加小红书表情）：`
-
-        const contentResponse = await client.chat.completions.create({
-          model: REWRITE_MODEL,
-          messages: [{ role: 'user', content: fullContentPrompt }],
-          temperature: 0.9,
-          top_p: 0.95,
-          max_tokens: 8192,
-        })
-
-        newContent = contentResponse.choices[0]?.message?.content?.trim() || content
+        newContent = await callOpenRouter(OPENROUTER_API_KEY, REWRITE_MODEL, fullContentPrompt, 8192, 0.9) || content
         console.log('[内容改写] 新正文长度:', newContent.length)
       } catch (error) {
         console.error('[内容改写] 正文改写失败:', error)
