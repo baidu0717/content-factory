@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
     const client = new OpenAI({
       apiKey: OPENROUTER_API_KEY,
       baseURL: 'https://openrouter.ai/api/v1',
+      defaultHeaders: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      },
     })
 
     console.log('[内容改写] 开始改写，使用模型:', REWRITE_MODEL)
