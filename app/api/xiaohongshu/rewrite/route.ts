@@ -30,9 +30,6 @@ export async function POST(request: NextRequest) {
     const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim()
     const REWRITE_MODEL = (process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6').trim()
 
-    console.log('[内容改写] OPENROUTER_API_KEY 长度:', OPENROUTER_API_KEY.length)
-    console.log('[内容改写] OPENROUTER_API_KEY 前12位:', OPENROUTER_API_KEY.substring(0, 12))
-    console.log('[内容改写] REWRITE_MODEL:', REWRITE_MODEL)
 
     const { title, content, titlePrompt, contentPrompt } = await request.json()
 
