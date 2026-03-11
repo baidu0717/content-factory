@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
-const REWRITE_MODEL = process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6'
-
-const client = new OpenAI({
-  apiKey: OPENROUTER_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
-})
-
 export async function POST(request: NextRequest) {
   try {
+    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
+    const REWRITE_MODEL = process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6'
+
+    console.log('[内容改写] OPENROUTER_API_KEY 长度:', OPENROUTER_API_KEY.length)
+    console.log('[内容改写] REWRITE_MODEL:', REWRITE_MODEL)
+
     const { title, content, titlePrompt, contentPrompt } = await request.json()
 
     if (!title && !content) {
@@ -27,6 +25,11 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    const client = new OpenAI({
+      apiKey: OPENROUTER_API_KEY,
+      baseURL: 'https://openrouter.ai/api/v1',
+    })
 
     console.log('[内容改写] 开始改写，使用模型:', REWRITE_MODEL)
 
