@@ -74,6 +74,35 @@ function URLParamsLoader({
       return
     }
 
+    // 支持 record_id 参数（短链接模式，避免超长URL被CDN拦截）
+    const recordId = searchParams.get('record_id')
+    if (recordId) {
+      loadedRef.current = true
+      const params = new URLSearchParams({ record_id: recordId })
+      const appToken = searchParams.get('app_token')
+      const tableId = searchParams.get('table_id')
+      if (appToken) params.set('app_token', appToken)
+      if (tableId) params.set('table_id', tableId)
+
+      console.log('[URL参数] 从 record_id 加载笔记数据:', recordId)
+      fetch(`/api/feishu/get-record?${params}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            onLoad({
+              title: data.data.title,
+              content: data.data.content,
+              tags: data.data.tags || '',
+              images: []
+            })
+          } else {
+            console.error('[URL参数] 获取记录失败:', data.error)
+          }
+        })
+        .catch(e => console.error('[URL参数] 获取记录异常:', e))
+      return
+    }
+
     const title = searchParams.get('title')
     const content = searchParams.get('content')
     let tags = searchParams.get('tags')

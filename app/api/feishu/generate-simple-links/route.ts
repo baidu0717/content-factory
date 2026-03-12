@@ -109,8 +109,8 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // 生成简化版链接（使用 record_id）
-        const rewriteUrl = `${BASE_URL}/api/feishu/redirect-to-rewrite?record_id=${recordId}`
+        // 生成简化版链接（直接用 record_id，/rewrite 页面会自行从飞书拉取数据）
+        const rewriteUrl = `${BASE_URL}/rewrite?record_id=${recordId}&app_token=${APP_TOKEN}&table_id=${TABLE_ID}`
 
         // 更新记录的"复刻链接"字段
         const updateResponse = await fetch(

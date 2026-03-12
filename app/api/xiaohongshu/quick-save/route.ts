@@ -16,7 +16,7 @@ const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/ope
  * 从短链接获取完整URL和note_id
  */
 async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string; noteId: string }> {
-  console.log('[快捷保存-哼哼猫] 跟随短链接重定向:', shortUrl)
+  console.log('[短链解析] 跟随短链接重定向:', shortUrl)
 
   // 跟随重定向获取完整URL（使用GET方法并允许自动跟随重定向）
   const response = await fetch(shortUrl, {
@@ -29,7 +29,7 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
   })
 
   const fullUrl = response.url
-  console.log('[快捷保存-哼哼猫] 完整URL:', fullUrl)
+  console.log('[短链解析] 完整URL:', fullUrl)
 
   // 从URL中提取note_id
   // 格式1: https://www.xiaohongshu.com/explore/684aa03a000000002202750b
@@ -47,7 +47,7 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
     const redirectUriMatch = fullUrl.match(/redirect_uri=([^&]+)/)
     if (redirectUriMatch) {
       const redirectUri = decodeURIComponent(redirectUriMatch[1])
-      console.log('[快捷保存-哼哼猫] 从redirect_uri提取:', redirectUri)
+      console.log('[短链解析] 从redirect_uri提取:', redirectUri)
       const redirectMatch = redirectUri.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
       if (redirectMatch) {
         noteId = redirectMatch[1]
@@ -57,23 +57,23 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
 
   // 如果还是没找到，尝试从响应体中提取
   if (!noteId) {
-    console.log('[快捷保存-哼哼猫] 尝试从响应体提取note_id...')
+    console.log('[短链解析] 尝试从响应体提取note_id...')
     const html = await response.text()
 
     // 尝试从HTML中查找小红书链接
     const htmlMatch = html.match(/https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
     if (htmlMatch) {
       noteId = htmlMatch[1]
-      console.log('[快捷保存-哼哼猫] 从HTML中提取到note_id:', noteId)
+      console.log('[短链解析] 从HTML中提取到note_id:', noteId)
     }
   }
 
   if (!noteId) {
-    console.error('[快捷保存-哼哼猫] 无法提取note_id，URL:', fullUrl)
+    console.error('[短链解析] 无法提取note_id，URL:', fullUrl)
     throw new Error(`无法从URL中提取note_id: ${fullUrl}`)
   }
 
-  console.log('[快捷保存-哼哼猫] 提取到note_id:', noteId)
+  console.log('[短链解析] 提取到note_id:', noteId)
 
   return { fullUrl, noteId }
 }
@@ -90,17 +90,27 @@ async function parseXiaohongshuWithJizhile(url: string) {
   console.log('[快捷保存-极致了] 调用极致了API...')
   console.log('[快捷保存-极致了] note_id:', noteId)
 
-  const response = await fetch(JIZHILE_API_BASE, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      type: 11,
-      note_id: noteId,
-      key: JIZHILE_API_KEY
+  // 20秒超时：避免极致了慢响应拖垮整个请求链
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 20000)
+
+  let response: Response
+  try {
+    response = await fetch(JIZHILE_API_BASE, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        type: 11,
+        note_id: noteId,
+        key: JIZHILE_API_KEY
+      }),
+      signal: controller.signal
     })
-  })
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!response.ok) {
     const errorText = await response.text()
@@ -252,10 +262,10 @@ async function parseXiaohongshuWithJizhile(url: string) {
  * 解析小红书链接（使用哼哼猫API - 免费但数据不全）
  */
 async function parseXiaohongshuWithHenghengmao(url: string) {
-  console.log('[快捷保存-哼哼猫] 开始解析链接:', url)
+  console.log('[短链解析] 开始解析链接:', url)
 
   // 哼哼猫API直接支持短链接，无需先解析
-  console.log('[快捷保存-哼哼猫] 调用哼哼猫API...')
+  console.log('[短链解析] 调用哼哼猫API...')
   const response = await fetch(HENGHENGMAO_API_URL, {
     method: 'POST',
     headers: {
@@ -270,22 +280,22 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error('[快捷保存-哼哼猫] API错误:', errorText)
+    console.error('[短链解析] API错误:', errorText)
     throw new Error(`解析失败: HTTP ${response.status}`)
   }
 
   const data = await response.json()
 
   // 详细日志
-  console.log('[快捷保存-哼哼猫] API 完整响应:', JSON.stringify(data, null, 2))
+  console.log('[短链解析] API 完整响应:', JSON.stringify(data, null, 2))
 
   // 哼哼猫API返回格式: { text: string, medias: [...] }
   if (!data.text && !data.medias) {
-    console.error('[快捷保存-哼哼猫] API返回数据格式错误:', data)
+    console.error('[短链解析] API返回数据格式错误:', data)
     throw new Error('API返回数据格式错误')
   }
 
-  console.log('[快捷保存-哼哼猫] 笔记数据获取成功')
+  console.log('[短链解析] 笔记数据获取成功')
 
   // 提取正文内容
   const rawContent = data.text || ''
@@ -302,8 +312,8 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
   // 清理多余的空格
   content = content.replace(/\s+/g, ' ').trim()
 
-  console.log('[快捷保存-哼哼猫] 原始正文:', rawContent.substring(0, 100) + '...')
-  console.log('[快捷保存-哼哼猫] 清理后正文:', content.substring(0, 100) + '...')
+  console.log('[短链解析] 原始正文:', rawContent.substring(0, 100) + '...')
+  console.log('[短链解析] 清理后正文:', content.substring(0, 100) + '...')
 
   // 从正文中提取话题标签
   // 匹配 #xxx[话题]# 格式，提取出 #xxx 部分
@@ -371,7 +381,7 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
     .map((media: any) => media.resource_url || media.preview_url || '')
     .filter(Boolean) || []
 
-  console.log('[快捷保存-哼哼猫] 解析成功 - 标题:', title, '图片数:', images.length)
+  console.log('[短链解析] 解析成功 - 标题:', title, '图片数:', images.length)
 
   // 注意：哼哼猫API不返回以下数据，设为默认值
   const authorName = ''  // 需要手动输入
@@ -381,11 +391,11 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
   const commentCount = 0    // 需要手动输入
   const publishTime = ''    // 需要手动输入
 
-  console.log('[快捷保存-哼哼猫] ⚠️  哼哼猫API不提供互动数据，作者昵称、浏览数、点赞数等需要手动填写')
+  console.log('[短链解析] ⚠️  哼哼猫API不提供互动数据，作者昵称、浏览数、点赞数等需要手动填写')
 
   return {
     title,
-    content: bodyContent, // 使用纯正文（不含标题）
+    content: bodyContent,
     tags,
     images,
     authorName,
@@ -831,6 +841,29 @@ async function saveToFeishu(
 
   const recordId = data.data?.record?.record_id
   console.log('[快捷保存-飞书] 保存成功，记录 ID:', recordId)
+
+  // 自动设置"去复刻"字段（短链接，避免超长URL被CDN拦截）
+  if (recordId) {
+    try {
+      const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://content-factory-jade-nine.vercel.app'
+      const rewriteUrl = `${BASE_URL}/rewrite?record_id=${recordId}&app_token=${appToken}&table_id=${tableId}`
+      await fetch(
+        `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${appAccessToken}`
+          },
+          body: JSON.stringify({ fields: { '去复刻': rewriteUrl } })
+        }
+      )
+      console.log('[快捷保存-飞书] 去复刻链接已自动设置')
+    } catch (e) {
+      console.warn('[快捷保存-飞书] 设置去复刻链接失败（非致命）:', e)
+    }
+  }
+
   return { recordId }
 }
 
