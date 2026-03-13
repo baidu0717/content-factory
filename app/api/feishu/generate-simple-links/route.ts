@@ -2,17 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUserAccessToken, getAppAccessToken } from '@/lib/feishuAuth'
 
 const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
-const APP_TOKEN = process.env.FEISHU_DEFAULT_APP_TOKEN || ''
-const TABLE_ID = process.env.FEISHU_DEFAULT_TABLE_ID || ''
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL
 
 /**
  * POST /api/feishu/generate-simple-links
  * 为飞书表格中所有记录生成简化版复刻链接（使用 record_id）
+ * 支持传入 app_token 和 table_id，否则使用默认值
  */
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json().catch(() => ({}))
+    const APP_TOKEN = body.app_token || process.env.FEISHU_DEFAULT_APP_TOKEN || ''
+    const TABLE_ID = body.table_id || process.env.FEISHU_DEFAULT_TABLE_ID || ''
+
     console.log('🔗 开始生成简化版复刻链接...')
+    console.log('📋 表格:', APP_TOKEN, TABLE_ID)
 
     if (!APP_TOKEN || !TABLE_ID) {
       return NextResponse.json({
