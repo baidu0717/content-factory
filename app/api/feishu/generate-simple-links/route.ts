@@ -80,11 +80,9 @@ export async function POST(request: NextRequest) {
 
     console.log('📝 字段映射:', fieldMap)
 
-    const titleFieldId = fieldMap['标题']
-    const contentFieldId = fieldMap['正文']
-    const linkFieldId = fieldMap['去复刻'] || fieldMap['复刻链接']
+    const linkFieldName = '去复刻' in fieldMap ? '去复刻' : ('复刻链接' in fieldMap ? '复刻链接' : null)
 
-    if (!titleFieldId || !contentFieldId || !linkFieldId) {
+    if (!fieldMap['标题'] || !fieldMap['正文'] || !linkFieldName) {
       return NextResponse.json({
         success: false,
         error: '表格中缺少必要字段：标题、正文、去复刻（或复刻链接）',
@@ -97,14 +95,15 @@ export async function POST(request: NextRequest) {
     let successCount = 0
     let skipCount = 0
     let errorCount = 0
+    let firstError = ''
 
     for (const record of records) {
       try {
         const recordId = record.record_id
-        const fields = record.fields
+        const recordFields = record.fields
 
-        const title = fields['标题'] || ''
-        const content = fields['正文'] || ''
+        const title = recordFields['标题'] || ''
+        const content = recordFields['正文'] || ''
 
         // 如果标题或正文为空，跳过
         if (!title || !content) {
@@ -116,7 +115,7 @@ export async function POST(request: NextRequest) {
         // 生成简化版链接（直接用 record_id，/rewrite 页面会自行从飞书拉取数据）
         const rewriteUrl = `${BASE_URL}/rewrite?record_id=${recordId}&app_token=${APP_TOKEN}&table_id=${TABLE_ID}`
 
-        // 更新记录的"复刻链接"字段
+        // 更新记录的"去复刻"字段（用字段名称，不用字段ID）
         const updateResponse = await fetch(
           `${FEISHU_API_URL}/bitable/v1/apps/${APP_TOKEN}/tables/${TABLE_ID}/records/${recordId}`,
           {
@@ -127,7 +126,7 @@ export async function POST(request: NextRequest) {
             },
             body: JSON.stringify({
               fields: {
-                [linkFieldId]: rewriteUrl
+                [linkFieldName]: rewriteUrl
               }
             })
           }
@@ -136,7 +135,9 @@ export async function POST(request: NextRequest) {
         const updateData = await updateResponse.json()
 
         if (updateData.code !== 0) {
-          console.error(`❌ 更新记录 ${recordId} 失败:`, updateData.msg)
+          const errMsg = `记录${recordId}: ${updateData.msg} (code:${updateData.code})`
+          console.error(`❌ 更新失败:`, errMsg)
+          if (!firstError) firstError = errMsg
           errorCount++
         } else {
           console.log(`✅ 已生成链接: ${recordId}`)
@@ -164,6 +165,7 @@ export async function POST(request: NextRequest) {
         success: successCount,
         skipped: skipCount,
         failed: errorCount,
+        first_error: firstError || undefined,
       },
       message: '简化版复刻链接生成完成！',
     })
