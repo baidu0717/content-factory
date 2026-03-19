@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import axios from 'axios'
 
-// 极致了 API 配置（统一使用极致了API）
-const JZL_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY || ''
-const JZL_API_URL = 'https://www.dajiala.com/fbmain/monitor/v3/xhs'
+// 302.ai API 配置
+const API_302AI_KEY = process.env.API_302AI_KEY || ''
+const API_302AI_BASE = 'https://api.302ai.cn'
 
 /**
  * 从小红书链接中提取笔记ID
@@ -79,47 +79,47 @@ async function extractNoteId(url: string): Promise<string | null> {
 }
 
 /**
- * 调用极致了API获取笔记完整详情（包含内容、图片、作者、互动数据）
+ * 调用 302.ai API 获取笔记完整详情（包含内容、图片、作者、互动数据）
  */
 async function fetchNoteDetails(noteId: string) {
   try {
-    console.log('[极致了API] 开始获取笔记详情, noteId:', noteId)
+    console.log('[302.ai API] 开始获取笔记详情, noteId:', noteId)
 
-    const response = await fetch(JZL_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        key: JZL_API_KEY,
-        type: 11, // 笔记详情接口
-        note_id: noteId,
-      })
-    })
+    const response = await fetch(
+      `${API_302AI_BASE}/tools/xiaohongshu/app/get_note_info?note_id=${noteId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${API_302AI_KEY}`,
+        }
+      }
+    )
 
     const data = await response.json()
 
-    console.log('[极致了API] 响应状态码:', response.status)
-    console.log('[极致了API] 响应数据code:', data.code)
+    console.log('[302.ai API] 响应状态码:', response.status)
+    console.log('[302.ai API] 响应数据:', JSON.stringify(data).substring(0, 300))
 
-    if (data.code !== 0) {
-      console.error('[极致了API] 获取失败:', data)
+    if (!response.ok) {
+      console.error('[302.ai API] 获取失败:', data)
       return null
     }
 
-    const note = data.note_list?.[0]
+    // 兼容两种响应结构
+    const noteArr = data?.data?.data
+    const note = noteArr?.[0]?.note_list?.[0] || noteArr?.[0]
     if (!note) {
-      console.error('[极致了API] 笔记数据不存在')
+      console.error('[302.ai API] 笔记数据不存在, data结构:', JSON.stringify(data?.data).substring(0, 200))
       return null
     }
 
-    console.log('[极致了API] 成功获取笔记详情')
-    console.log('[极致了API] - 标题:', note.title || note.desc)
-    console.log('[极致了API] - 作者:', note.user?.nickname)
-    console.log('[极致了API] - 点赞:', note.liked_count || note.likes)
-    console.log('[极致了API] - 收藏:', note.collected_count)
-    console.log('[极致了API] - 评论:', note.comments_count)
-    console.log('[极致了API] - 浏览:', note.view_count)
+    console.log('[302.ai API] 成功获取笔记详情')
+    console.log('[302.ai API] - 标题:', note.title || note.desc)
+    console.log('[302.ai API] - 作者:', note.user?.nickname)
+    console.log('[302.ai API] - 点赞:', note.liked_count)
+    console.log('[302.ai API] - 收藏:', note.collected_count)
+    console.log('[302.ai API] - 评论:', note.comments_count)
+    console.log('[302.ai API] - 浏览:', note.view_count)
 
     // 提取图片列表
     const images: string[] = []

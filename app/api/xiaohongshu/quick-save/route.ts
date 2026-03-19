@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 
-// 极致了 API 配置（优先使用，数据完整）
-const JIZHILE_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY || ''
-const JIZHILE_API_BASE = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_BASE || 'https://www.dajiala.com/fbmain/monitor/v3/xhs'
+// 302.ai API 配置（主力）
+const API_302AI_KEY = process.env.API_302AI_KEY || ''
+const API_302AI_BASE = 'https://api.302ai.cn'
 
 // 哼哼猫 API 配置（备用，免费但数据不全）
 const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
@@ -79,68 +79,56 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
 }
 
 /**
- * 解析小红书链接（使用极致了API - 数据完整）
+ * 解析小红书链接（使用 302.ai API - 主力）
  */
 async function parseXiaohongshuWithJizhile(url: string) {
-  console.log('[快捷保存-极致了] 开始解析链接:', url)
+  console.log('[快捷保存-302.ai] 开始解析链接:', url)
 
-  // 极致了API需要note_id，先解析短链接获取
+  // 302.ai API 需要 note_id，先解析短链接获取
   const { noteId } = await getFullUrlAndNoteId(url)
 
-  console.log('[快捷保存-极致了] 调用极致了API...')
-  console.log('[快捷保存-极致了] note_id:', noteId)
+  console.log('[快捷保存-302.ai] 调用302.ai API...')
+  console.log('[快捷保存-302.ai] note_id:', noteId)
 
-  // 20秒超时：避免极致了慢响应拖垮整个请求链
+  // 20秒超时
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 20000)
 
   let response: Response
   try {
-    response = await fetch(JIZHILE_API_BASE, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        type: 11,
-        note_id: noteId,
-        key: JIZHILE_API_KEY
-      }),
-      signal: controller.signal
-    })
+    response = await fetch(
+      `${API_302AI_BASE}/tools/xiaohongshu/app/get_note_info?note_id=${noteId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${API_302AI_KEY}`,
+        },
+        signal: controller.signal
+      }
+    )
   } finally {
     clearTimeout(timeout)
   }
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error('[快捷保存-极致了] API错误:', errorText)
-    throw new Error(`极致了API请求失败: HTTP ${response.status}`)
+    console.error('[快捷保存-302.ai] API错误:', errorText)
+    throw new Error(`302.ai API请求失败: HTTP ${response.status}`)
   }
 
   const data = await response.json()
+  console.log('[快捷保存-302.ai] 响应:', JSON.stringify(data).substring(0, 300))
 
-  // 检查返回码（极致了API成功返回 code: 0）
-  if (data.code !== 0) {
-    console.error('[快捷保存-极致了] API返回错误:', data)
-    if (data.code === 1001) {
-      throw new Error('极致了API: 所有渠道不可用（临时问题）')
-    } else if (data.code === 1002) {
-      throw new Error('极致了API: 登录已过期，需要刷新KEY')
-    } else {
-      throw new Error(`极致了API错误: ${data.msg || '未知错误'}`)
-    }
+  // 兼容两种响应结构
+  const noteArr = data?.data?.data
+  const noteData = noteArr?.[0]?.note_list?.[0] || noteArr?.[0]
+
+  if (!noteData) {
+    throw new Error(`302.ai API: 未找到笔记数据, 响应: ${JSON.stringify(data?.data).substring(0, 200)}`)
   }
 
-  console.log('[快捷保存-极致了] ✅ API调用成功')
+  console.log('[快捷保存-302.ai] ✅ API调用成功')
 
-  // 极致了API返回的数据结构
-  const noteList = data.note_list || []
-  if (noteList.length === 0) {
-    throw new Error('极致了API: 未找到笔记数据')
-  }
-
-  const noteData = noteList[0]
   const userInfo = noteData.user || {}
   const imageList = noteData.images_list || []
 
@@ -241,8 +229,8 @@ async function parseXiaohongshuWithJizhile(url: string) {
   const timestamp = noteData.time || noteData.create_time || 0
   const publishTime = timestamp ? new Date(timestamp * 1000).toISOString().split('T')[0] : ''
 
-  console.log('[快捷保存-极致了] 解析成功 - 标题:', title, '图片数:', images.length)
-  console.log('[快捷保存-极致了] ✅ 完整数据 - 作者:', authorName, '浏览:', viewCount, '点赞:', likedCount)
+  console.log('[快捷保存-302.ai] 解析成功 - 标题:', title, '图片数:', images.length)
+  console.log('[快捷保存-302.ai] ✅ 完整数据 - 作者:', authorName, '浏览:', viewCount, '点赞:', likedCount)
 
   return {
     title,
@@ -847,7 +835,7 @@ async function saveToFeishu(
     try {
       const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://content-factory-jade-nine.vercel.app'
       const rewriteUrl = `${BASE_URL}/rewrite?record_id=${recordId}&app_token=${appToken}&table_id=${tableId}`
-      await fetch(
+      const updateRes = await fetch(
         `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
         {
           method: 'PUT',
@@ -858,7 +846,12 @@ async function saveToFeishu(
           body: JSON.stringify({ fields: { '去复刻': rewriteUrl } })
         }
       )
-      console.log('[快捷保存-飞书] 去复刻链接已自动设置')
+      const updateData = await updateRes.json()
+      if (updateData.code !== 0) {
+        console.warn('[快捷保存-飞书] 去复刻链接设置失败:', updateData.msg)
+      } else {
+        console.log('[快捷保存-飞书] 去复刻链接已自动设置')
+      }
     } catch (e) {
       console.warn('[快捷保存-飞书] 设置去复刻链接失败（非致命）:', e)
     }
@@ -931,7 +924,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 构建API提示
-        let apiInfo = apiUsed === 'henghengmao' ? '\n⚠️ 哼哼猫API (互动数待填)' : '\n🎯 极致了API'
+        let apiInfo = apiUsed === 'henghengmao' ? '\n⚠️ 哼哼猫API (互动数待填)' : '\n🎯 302.ai API'
 
         return NextResponse.json({
           success: true,
@@ -986,7 +979,7 @@ export async function POST(request: NextRequest) {
     // 构建API使用提示
     let apiInfo = ''
     if (apiUsed === 'jizhile') {
-      apiInfo = '\n🎯 极致了API'
+      apiInfo = '\n🎯 302.ai API'
     } else if (apiUsed === 'henghengmao') {
       apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
     }
