@@ -865,53 +865,37 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 同步模式：解析 + 保存记录（同步） + 图片上传（后台）
-    // 这样能立即返回成功/失败结果，也不会因为图片处理超时
+    // 异步模式：立即返回响应，所有耗时操作（解析+保存+图片）全部在后台执行
+    // 解决 Vercel 10s 函数限制 + 中国网络延迟导致的超时问题
     if (isAsync) {
-      console.log('[快捷保存] 🚀 混合模式：同步解析写入 + 后台上传图片')
+      console.log('[快捷保存] 🚀 全异步模式：立即返回，后台完成所有操作')
 
-      try {
-        // 1. 解析笔记信息（同步）
-        const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed } = await parseXiaohongshu(url)
-
-        // 2. 先保存文字内容到飞书（不含图片，同步）
-        const { recordId } = await saveToFeishu(
-          finalAppToken, finalTableId,
-          title, content, tags,
-          [], // 图片先留空
-          url, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime,
-          remark
-        )
-
-        // 3. 图片在后台上传（响应发出后继续执行，使用 after() 防止被 Vercel 提前终止）
-        if (images.length > 0 && recordId) {
-          after(async () => {
-            try {
-              await processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
-            } catch (err) {
-              console.error('[快捷保存-图片后台] 失败:', err)
-            }
-          })
+      // 所有耗时操作移到 after() 后台执行（响应发出后才开始）
+      after(async () => {
+        try {
+          const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed } = await parseXiaohongshu(url)
+          const { recordId } = await saveToFeishu(
+            finalAppToken, finalTableId,
+            title, content, tags,
+            [],
+            url, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime,
+            remark
+          )
+          if (images.length > 0 && recordId) {
+            await processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
+          }
+          console.log('[快捷保存-后台] ✅ 保存成功:', title)
+        } catch (err) {
+          console.error('[快捷保存-后台] ❌ 失败:', err)
         }
+      })
 
-        // 构建API提示
-        let apiInfo = apiUsed === 'henghengmao' ? '\n⚠️ 哼哼猫API (互动数待填)' : '\n🎯 302.ai API'
-
-        return NextResponse.json({
-          success: true,
-          message: `✅ 保存成功！${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}\n📸 ${images.length} 张图片后台上传中\n👁️ ${viewCount} 浏览`,
-          data: { async: true, title, authorName, imageCount: images.length, viewCount, apiUsed }
-        })
-      } catch (error) {
-        // 解析或写入失败，返回真实错误信息
-        const errMsg = error instanceof Error ? error.message : '未知错误'
-        console.error('[快捷保存] 失败:', errMsg)
-        return NextResponse.json({
-          success: false,
-          message: `❌ 保存失败：${errMsg}`,
-          data: { async: true }
-        })
-      }
+      // 立即返回，iOS 不等待
+      return NextResponse.json({
+        success: true,
+        message: `⏳ 正在后台保存到飞书，稍后查看表格...`,
+        data: { async: true }
+      })
     }
 
     // 同步模式（原有逻辑）
