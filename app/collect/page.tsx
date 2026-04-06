@@ -153,20 +153,18 @@ export default function CollectPage() {
       // 第一阶段：采集100条
       while (allNotes.length < INITIAL_LIMIT && hasMore && !isPaused) {
         const response = await searchXiaohongshuNotes({
-          type: apiType,
+          type: 9,
           keyword,
-          page: apiType === 9 ? page.toString() : page, // APP API v2需要字符串
+          page: page.toString(),
           sort: sortStrategy,
-          note_type: apiType === 9 ? 'note' : 'image', // APP API v2使用'note'
-          note_time: apiType === 9 ? '' : '不限', // APP API v2空表示不限
-          // note_range和proxy只用于Web API
-          ...(apiType === 1 ? { note_range: '不限', proxy: '' } : {}),
-          // APP API v2 分页参数（必须传递，即使是空字符串）
-          ...(apiType === 9 ? { searchId: searchId || '', sessionId: sessionId || '' } : {}),
+          note_type: 'note',
+          note_time: '',
+          searchId: searchId || '',
+          sessionId: sessionId || '',
         })
 
         // 保存分页参数供下次使用
-        if (apiType === 9 && response.searchId) {
+        if (response.searchId) {
           searchId = response.searchId
           sessionId = response.sessionId || ''
         }
@@ -203,20 +201,18 @@ export default function CollectPage() {
         if (totalInteract >= CONTINUE_THRESHOLD && hasMore && !isPaused) {
           while (allNotes.length < MAX_TOTAL && hasMore && !isPaused) {
             const response = await searchXiaohongshuNotes({
-              type: apiType,
+              type: 9,
               keyword,
-              page: apiType === 9 ? page.toString() : page, // APP API v2需要字符串
+              page: page.toString(),
               sort: sortStrategy,
-              note_type: apiType === 9 ? 'note' : 'image', // APP API v2使用'note'
-              note_time: apiType === 9 ? '' : '不限', // APP API v2空表示不限
-              // note_range和proxy只用于Web API
-              ...(apiType === 1 ? { note_range: '不限', proxy: '' } : {}),
-              // APP API v2 分页参数（必须传递，即使是空字符串）
-              ...(apiType === 9 ? { searchId: searchId || '', sessionId: sessionId || '' } : {}),
+              note_type: 'note',
+              note_time: '',
+              searchId: searchId || '',
+              sessionId: sessionId || '',
             })
 
             // 保存分页参数供下次使用
-            if (apiType === 9 && response.searchId) {
+            if (response.searchId) {
               searchId = response.searchId
               sessionId = response.sessionId || ''
             }
