@@ -50,10 +50,15 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   }
 
+  // 服务端不受 ATS 限制，xhslink.com 只支持 http，需还原
+  const resolveUrl = shortUrl.includes('xhslink.com') && shortUrl.startsWith('https://')
+    ? shortUrl.replace('https://', 'http://')
+    : shortUrl
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 4000)
   try {
-    const headResp = await fetch(shortUrl, { method: 'HEAD', redirect: 'follow', signal: controller.signal, headers })
+    const headResp = await fetch(resolveUrl, { method: 'HEAD', redirect: 'follow', signal: controller.signal, headers })
     const fullUrl = headResp.url
     console.log('[短链解析] HEAD完整URL:', fullUrl)
     const noteId = extractNoteId(fullUrl)
