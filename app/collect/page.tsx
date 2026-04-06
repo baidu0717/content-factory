@@ -47,8 +47,7 @@ const sortStrategies = [
   { value: 'comment_descending', label: '💬 评论优先', desc: '按评论数排序，找高评论笔记', apiType: 9 },
   { value: 'popularity_descending', label: '❤️ 点赞优先', desc: '按点赞数排序，找爆款笔记', apiType: 9 },
   { value: 'collect_descending', label: '⭐ 收藏优先', desc: '按收藏数排序，找高价值笔记', apiType: 9 },
-  { value: 'hot', label: '🔥 热度优先', desc: '综合热度排序（Web API）', apiType: 1 },
-  { value: 'general', label: '📊 综合排序', desc: '综合推荐排序', apiType: 1 },
+  { value: 'general', label: '📊 综合排序', desc: '综合推荐排序', apiType: 9 },
   { value: 'time_descending', label: '⏰ 最新优先', desc: '按发布时间排序', apiType: 9 },
 ] as const
 

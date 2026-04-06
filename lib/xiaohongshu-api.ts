@@ -5,24 +5,12 @@ import {
   XiaohongshuDetailResponse
 } from '@/types/xiaohongshu-api'
 
-// API配置（从环境变量读取）
-// 注意：使用 NEXT_PUBLIC_ 前缀以便在客户端访问
-const API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_BASE || 'https://www.dajiala.com/fbmain/monitor/v3/xhs'
-const API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY || ''
-
 // 详情接口配置（哼哼猫API，从环境变量读取）
-// 注意：详情接口与搜索接口使用相同的API密钥
 const DETAIL_API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE || 'https://api.meowload.net/openapi/extract/post'
 const DETAIL_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
 
-// 检查必需的环境变量
-if (!API_KEY) {
-  console.warn('⚠️ NEXT_PUBLIC_XIAOHONGSHU_SEARCH_API_KEY 未设置，小红书搜索和详情功能可能无法使用')
-  console.warn('当前 API_KEY 值:', API_KEY)
-}
-
 /**
- * 搜索小红书笔记
+ * 搜索小红书笔记（通过 /api/xiaohongshu/search 代理 302.ai）
  * @param params 搜索参数
  * @returns Promise<XiaohongshuApiResponse>
  */
@@ -31,86 +19,35 @@ export async function searchXiaohongshuNotes(
 ): Promise<XiaohongshuApiResponse> {
   const startTime = Date.now()
 
-  console.log('\n' + '='.repeat(80))
-  console.log('🔍 [搜索接口] 开始搜索小红书笔记')
-  console.log('关键词:', params.keyword)
-  console.log('页码:', params.page || 1)
-  console.log('排序:', params.sort || 'general')
-  console.log('笔记类型:', params.note_type || 'image')
-  console.log('API地址:', API_URL)
+  console.log('🔍 [搜索接口] 开始搜索 (302.ai)')
+  console.log('关键词:', params.keyword, '页码:', params.page || 1, '排序:', params.sort || 'general')
 
-  const requestBody: XiaohongshuSearchParams = {
-    key: API_KEY,
-    type: params.type || 1,
+  const qs = new URLSearchParams({
     keyword: params.keyword,
-    page: params.page || 1,
-    sort: params.sort || 'general',
-    note_type: params.note_type || 'image',
-    note_time: params.note_time !== undefined ? params.note_time : '不限',
-    note_range: params.note_range || '不限',
-    proxy: params.proxy !== undefined ? params.proxy : '',
-    // APP API v2专用参数（如果提供）
-    ...(params.searchId !== undefined && { searchId: params.searchId }),
-    ...(params.sessionId !== undefined && { sessionId: params.sessionId }),
-  }
-
-  console.log('请求参数:', JSON.stringify(requestBody, null, 2))
+    page: String(params.page || 1),
+    ...(params.sort ? { sort: params.sort } : {}),
+    ...(params.searchId !== undefined ? { searchId: params.searchId } : {}),
+    ...(params.sessionId !== undefined ? { sessionId: params.sessionId } : {}),
+  })
 
   try {
-    console.log('⏰ 发起POST请求...')
-    const fetchStartTime = Date.now()
-
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    })
-
-    const fetchEndTime = Date.now()
-    const fetchTime = fetchEndTime - fetchStartTime
-
-    console.log('📡 HTTP响应返回 (耗时 ' + fetchTime + 'ms)')
-    console.log('状态码:', response.status)
-    console.log('状态文本:', response.statusText)
+    const response = await fetch(`/api/xiaohongshu/search?${qs}`)
 
     if (!response.ok) {
-      console.log('❌ HTTP响应不正常!')
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    console.log('🔄 解析JSON数据...')
     const data: XiaohongshuApiResponse = await response.json()
 
-    console.log('✅ 搜索接口返回数据:')
-    console.log('  - code:', data.code)
-    console.log('  - cost:', data.cost)
-    console.log('  - has_more:', data.has_more)
-    console.log('  - items数量:', data.items?.length || 0)
-    console.log('  - remain_money:', data.remain_money)
-
-    // 检查API返回的状态码（成功时code为0）
     if (data.code !== 0) {
-      console.log('❌ API返回错误状态码:', data.code)
-      console.log('❌ 完整响应数据:', JSON.stringify(data, null, 2))
-      const errorMsg = (data as any).msg || (data as any).message || 'API请求失败'
-      throw new Error(`API错误 (code: ${data.code}): ${errorMsg}`)
+      const errorMsg = (data as any).msg || 'API请求失败'
+      throw new Error(`搜索错误: ${errorMsg}`)
     }
 
-    const endTime = Date.now()
-    const totalTime = endTime - startTime
-    console.log('✅ 搜索完成! 总耗时:', totalTime + 'ms')
-    console.log('='.repeat(80))
-
+    console.log('✅ 搜索完成，耗时:', Date.now() - startTime + 'ms，条数:', (data as any).data?.items?.length || 0)
     return data
   } catch (error) {
-    const endTime = Date.now()
-    const totalTime = endTime - startTime
-
-    console.error('❌ 搜索小红书笔记失败! 耗时:', totalTime + 'ms')
-    console.error('错误信息:', error)
-    console.log('='.repeat(80))
+    console.error('❌ 搜索失败:', error)
     throw error
   }
 }
@@ -157,7 +94,7 @@ export function transformToNotes(apiResponse: XiaohongshuApiResponse): Xiaohongs
 
         return {
           id: noteData.id,
-          xsec_token: '', // APP API v2没有xsec_token
+          xsec_token: noteData.xsec_token || '',
           title: noteData.title || '无标题',
           cover: noteData.images_list?.[0]?.url || '',
           liked_count: likedCount,
