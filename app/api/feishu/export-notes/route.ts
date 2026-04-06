@@ -25,10 +25,7 @@ export async function POST(req: NextRequest) {
         : `https://www.xiaohongshu.com/explore/${note.id}`
 
       return {
-        '笔记链接': {
-          link: link,
-          text: note.title || link,
-        },
+        '笔记链接': link,
         '标题': note.title,
         '作者': note.user_name,
         '分级': levelMap[note.level] || '📝 普通',
