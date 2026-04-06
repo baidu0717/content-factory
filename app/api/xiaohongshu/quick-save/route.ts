@@ -13,69 +13,59 @@ const HENGHENGMAO_API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE 
 const FEISHU_API_URL = process.env.FEISHU_API_URL || 'https://open.feishu.cn/open-apis'
 
 /**
- * 从短链接获取完整URL和note_id
+ * 从URL中提取note_id（支持完整小红书链接和短链接）
  */
 async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string; noteId: string }> {
-  console.log('[短链解析] 跟随短链接重定向:', shortUrl)
+  console.log('[短链解析] 解析URL:', shortUrl)
 
-  // 跟随重定向获取完整URL（使用GET方法并允许自动跟随重定向）
-  const response = await fetch(shortUrl, {
-    method: 'GET',
-    redirect: 'follow',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38(0x1800262c) NetType/WIFI Language/zh_CN',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    }
-  })
+  // 从 URL 中提取 note_id 的辅助函数
+  function extractNoteId(url: string): string | null {
+    // 格式1: https://www.xiaohongshu.com/explore/684aa03a000000002202750b
+    // 格式2: https://www.xiaohongshu.com/discovery/item/684aa03a000000002202750b
+    const directMatch = url.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
+    if (directMatch) return directMatch[1]
 
-  const fullUrl = response.url
-  console.log('[短链解析] 完整URL:', fullUrl)
-
-  // 从URL中提取note_id
-  // 格式1: https://www.xiaohongshu.com/explore/684aa03a000000002202750b
-  // 格式2: https://www.xiaohongshu.com/discovery/item/684aa03a000000002202750b
-  // 格式3: https://open.weixin.qq.com/...?redirect_uri=https%3A%2F%2Fwww.xiaohongshu.com%2Fdiscovery%2Fitem%2F695d3ed2000000000c0371c9...
-
-  let noteId: string | null = null
-
-  // 尝试直接从URL提取
-  let noteIdMatch = fullUrl.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
-  if (noteIdMatch) {
-    noteId = noteIdMatch[1]
-  } else {
-    // 尝试从URL参数中提取（微信OAuth重定向的情况）
-    const redirectUriMatch = fullUrl.match(/redirect_uri=([^&]+)/)
+    // 格式3: 微信OAuth重定向，note_id 在 redirect_uri 参数里
+    const redirectUriMatch = url.match(/redirect_uri=([^&]+)/)
     if (redirectUriMatch) {
       const redirectUri = decodeURIComponent(redirectUriMatch[1])
       console.log('[短链解析] 从redirect_uri提取:', redirectUri)
       const redirectMatch = redirectUri.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
-      if (redirectMatch) {
-        noteId = redirectMatch[1]
-      }
+      if (redirectMatch) return redirectMatch[1]
     }
+
+    return null
   }
 
-  // 如果还是没找到，尝试从响应体中提取
-  if (!noteId) {
-    console.log('[短链解析] 尝试从响应体提取note_id...')
-    const html = await response.text()
+  // 快速路径：如果已经是完整小红书链接，直接提取 note_id，无需任何网络请求
+  const directNoteId = extractNoteId(shortUrl)
+  if (directNoteId) {
+    console.log('[短链解析] 直接从URL提取到note_id:', directNoteId)
+    return { fullUrl: shortUrl, noteId: directNoteId }
+  }
 
-    // 尝试从HTML中查找小红书链接
-    const htmlMatch = html.match(/https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
-    if (htmlMatch) {
-      noteId = htmlMatch[1]
-      console.log('[短链解析] 从HTML中提取到note_id:', noteId)
+  // 慢速路径：短链接，尝试 HEAD 跟随重定向（超时 4 秒，避免 Vercel 10s 限制）
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.38(0x1800262c) NetType/WIFI Language/zh_CN',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 4000)
+  try {
+    const headResp = await fetch(shortUrl, { method: 'HEAD', redirect: 'follow', signal: controller.signal, headers })
+    const fullUrl = headResp.url
+    console.log('[短链解析] HEAD完整URL:', fullUrl)
+    const noteId = extractNoteId(fullUrl)
+    if (noteId) {
+      return { fullUrl, noteId }
     }
+    throw new Error(`无法从重定向URL中提取note_id: ${fullUrl}`)
+  } catch (e) {
+    throw new Error(`短链解析失败（建议在iOS设备上解析后再发送完整链接）: ${(e as Error).message}`)
+  } finally {
+    clearTimeout(timeout)
   }
-
-  if (!noteId) {
-    console.error('[短链解析] 无法提取note_id，URL:', fullUrl)
-    throw new Error(`无法从URL中提取note_id: ${fullUrl}`)
-  }
-
-  console.log('[短链解析] 提取到note_id:', noteId)
-
-  return { fullUrl, noteId }
 }
 
 /**
