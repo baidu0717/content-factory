@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUserAccessToken, getAppAccessToken } from '@/lib/feishuAuth'
 
 const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://content-factory-jade-nine.vercel.app'
 
 /**
  * POST /api/feishu/generate-simple-links

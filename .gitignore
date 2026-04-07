@@ -17,3 +17,4 @@ debug-*.js
 download-images.js
 fetch-record-*.js
 create-publish-table.js
+.vercel
