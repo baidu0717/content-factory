@@ -59,7 +59,8 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 4000)
   try {
-    const headResp = await fetch(resolveUrl, { method: 'HEAD', redirect: 'follow', signal: controller.signal, headers })
+    // xhslink.com 不支持 HEAD，用 GET 跟随跳转（不读 body，只取最终 URL）
+    const headResp = await fetch(resolveUrl, { method: 'GET', redirect: 'follow', signal: controller.signal, headers })
     const fullUrl = headResp.url
     console.log('[短链解析] HEAD完整URL:', fullUrl)
     const noteId = extractNoteId(fullUrl)
