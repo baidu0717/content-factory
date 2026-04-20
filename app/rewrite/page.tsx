@@ -60,9 +60,11 @@ interface HistoryVersion {
 
 // URL参数加载组件（需要包裹在Suspense中）
 function URLParamsLoader({
-  onLoad
+  onLoad,
+  onArticleId
 }: {
   onLoad: (note: OriginalNote) => void
+  onArticleId: (id: number) => void
 }) {
   const searchParams = useSearchParams()
   const loadedRef = React.useRef(false)
@@ -71,6 +73,30 @@ function URLParamsLoader({
     // 防止重复加载
     if (loadedRef.current) {
       console.log('[URL参数] 已经加载过，跳过')
+      return
+    }
+
+    // 支持 article_id 参数（从发布页跳转编辑）
+    const articleIdParam = searchParams.get('article_id')
+    if (articleIdParam) {
+      loadedRef.current = true
+      const id = parseInt(articleIdParam)
+      onArticleId(id)
+      fetch(`/api/articles/${id}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            onLoad({
+              title: data.data.title,
+              content: data.data.content,
+              tags: Array.isArray(data.data.tags) ? data.data.tags.join(' ') : '',
+              images: data.data.images || []
+            })
+          } else {
+            console.error('[URL参数] 获取文章失败:', data.error)
+          }
+        })
+        .catch(e => console.error('[URL参数] 获取文章异常:', e))
       return
     }
 
@@ -150,6 +176,8 @@ function URLParamsLoader({
 
 function RewritePageContent() {
   // ===== 状态管理 =====
+  const [articleId, setArticleId] = useState<number | null>(null)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [pageState, setPageState] = useState<PageState>('empty')
   const [xiaohongshuUrl, setXiaohongshuUrl] = useState('')
   const [isParsing, setIsParsing] = useState(false)
@@ -387,7 +415,7 @@ function RewritePageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editableTitle,
-          content: editableContent,
+          content: editableTags ? `${editableContent}\n\n${editableTags}` : editableContent,
           images: imageUrls
         })
       })
@@ -751,11 +779,63 @@ function RewritePageContent() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // ===== 保存草稿 =====
-  const handleSave = async () => {
-    if (!rewriteResult) return
-    alert('保存功能待实现')
-  }
+  // ===== 保存到发布页 =====
+  const handleSave = useCallback(async () => {
+    if (!editableTitle || !editableContent) return
+    setSaveStatus('saving')
+    try {
+      const tags = editableTags
+        ? editableTags.split(/\s+/).map(t => t.replace(/^#/, '')).filter(Boolean)
+        : []
+
+      let response: Response
+      if (articleId) {
+        response = await fetch('/api/articles', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: articleId,
+            title: editableTitle,
+            content: editableContent,
+            status: 'draft',
+            platforms: [],
+            tags,
+            wordCount: editableContent.length,
+            images: []
+          })
+        })
+      } else {
+        response = await fetch('/api/articles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: editableTitle,
+            content: editableContent,
+            status: 'draft',
+            platforms: [],
+            source: 'rewrite',
+            tags,
+            wordCount: editableContent.length,
+            images: []
+          })
+        })
+        const result = await response.json()
+        if (result.success) setArticleId(result.data.id)
+      }
+
+      const result = await response.json()
+      if (result.success) {
+        setSaveStatus('saved')
+        setTimeout(() => setSaveStatus('idle'), 2500)
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('[保存] 失败:', error)
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 2500)
+    }
+  }, [articleId, editableTitle, editableContent, editableTags])
 
   // ===== 重置页面 =====
   const handleReset = () => {
@@ -770,7 +850,7 @@ function RewritePageContent() {
     <div className="p-6">
       {/* URL参数加载器 */}
       <Suspense fallback={null}>
-        <URLParamsLoader onLoad={handleURLParamsLoad} />
+        <URLParamsLoader onLoad={handleURLParamsLoad} onArticleId={setArticleId} />
       </Suspense>
 
       {/* 页面标题 */}
@@ -815,7 +895,7 @@ function RewritePageContent() {
 
                   {/* 图片预览 */}
                   {previewUrls.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 mt-4">
+                    <div className="grid grid-cols-6 gap-2 mt-4">
                       {previewUrls.map((url, index) => (
                         <div
                           key={index}
@@ -965,7 +1045,7 @@ function RewritePageContent() {
                           <AlignLeft className="w-4 h-4 mr-1 text-blue-600" />
                           正文
                           <span className="ml-2 text-xs text-gray-500">
-                            ({editableContent?.length || 0} 字)
+                            ({(editableContent?.length || 0) + (editableTags ? editableTags.length + 2 : 0)} 字)
                           </span>
                         </label>
                         <div className="flex gap-2">
@@ -1077,31 +1157,46 @@ function RewritePageContent() {
                   )}
 
                   {/* 操作按钮 */}
-                  <div className="pt-4 border-t border-gray-200">
-                    <div className="grid grid-cols-2 gap-3">
+                  <div className="pt-4 border-t border-gray-200 space-y-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        onClick={handleSave}
+                        disabled={!editableTitle || !editableContent || saveStatus === 'saving'}
+                        className={`px-4 py-3 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          saveStatus === 'saved'
+                            ? 'bg-green-500 text-white'
+                            : saveStatus === 'error'
+                            ? 'bg-red-500 text-white'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                        }`}
+                      >
+                        {saveStatus === 'saving' ? (
+                          <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />保存中</>
+                        ) : saveStatus === 'saved' ? (
+                          <><Check className="w-4 h-4 mr-1.5" />已保存</>
+                        ) : saveStatus === 'error' ? (
+                          <><X className="w-4 h-4 mr-1.5" />失败</>
+                        ) : (
+                          <><Save className="w-4 h-4 mr-1.5" />保存</>
+                        )}
+                      </button>
                       <button
                         onClick={() => setShowPreview(true)}
                         disabled={!editableTitle || !editableContent}
-                        className="px-6 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        className="px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                       >
-                        <ExternalLink className="w-5 h-5 mr-2" />
+                        <ExternalLink className="w-4 h-4 mr-1.5" />
                         预览
                       </button>
                       <button
                         onClick={handlePublish}
                         disabled={!editableTitle || !editableContent || uploadedFiles.length === 0 || isPublishing}
-                        className="px-6 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        className="px-4 py-3 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-lg hover:from-pink-600 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                       >
                         {isPublishing ? (
-                          <>
-                            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                            {publishStep || '发布中...'}
-                          </>
+                          <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />{publishStep || '发布中'}</>
                         ) : (
-                          <>
-                            <Send className="w-5 h-5 mr-2" />
-                            发布
-                          </>
+                          <><Send className="w-4 h-4 mr-1.5" />发布</>
                         )}
                       </button>
                     </div>
@@ -1240,10 +1335,17 @@ function RewritePageContent() {
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         onClick={handleSave}
-                        className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center justify-center"
+                        disabled={saveStatus === 'saving'}
+                        className={`px-6 py-3 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 ${
+                          saveStatus === 'saved' ? 'bg-green-500 text-white'
+                          : saveStatus === 'error' ? 'bg-red-500 text-white'
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
+                        }`}
                       >
-                        <Save className="w-4 h-4 mr-2" />
-                        保存草稿
+                        {saveStatus === 'saving' ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />保存中</> :
+                         saveStatus === 'saved' ? <><Check className="w-4 h-4 mr-2" />已保存</> :
+                         saveStatus === 'error' ? <><X className="w-4 h-4 mr-2" />失败</> :
+                         <><Save className="w-4 h-4 mr-2" />保存</>}
                       </button>
                       <button
                         onClick={() => setShowPreview(true)}

@@ -29,6 +29,7 @@ import {
   Archive
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import WechatPublishModal from '@/components/WechatPublishModal'
 import XiaohongshuPublishModal from '@/components/XiaohongshuPublishModal'
 import ArticlePreviewModal from '@/components/ArticlePreviewModal'
@@ -63,6 +64,7 @@ const platformConfig = {
 }
 
 export default function PublishPage() {
+  const router = useRouter()
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -150,9 +152,7 @@ export default function PublishPage() {
   }
 
   const handleEdit = (article: Article) => {
-    setArticleToEdit(article)
-    setShowEditModal(true)
-    setShowDropdown(null)
+    router.push(`/rewrite?article_id=${article.id}`)
   }
 
   const handleEditSave = () => {

@@ -136,7 +136,8 @@ async function parseXiaohongshuWithJizhile(url: string) {
   let content = rawContent
   content = content.replace(/#[^#]+\[话题\]#/g, ' ')
   content = content.replace(/(\s+[@#]\S+)+\s*$/g, '')
-  content = content.replace(/\s+/g, ' ').trim()
+  // 只压缩行内多余空格，保留换行符（用 [^\S\n]+ 匹配非换行空白）
+  content = content.replace(/[^\S\n]+/g, ' ').trim()
 
   // 提取话题标签
   const tagPattern = /#([^#\s]+)\[话题\]#/g
@@ -294,8 +295,8 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
   // 2. 删除末尾的标签（@用户名 和 #话题#）
   content = content.replace(/(\s+[@#]\S+)+\s*$/g, '')
 
-  // 清理多余的空格
-  content = content.replace(/\s+/g, ' ').trim()
+  // 只压缩行内多余空格，保留换行符
+  content = content.replace(/[^\S\n]+/g, ' ').trim()
 
   console.log('[短链解析] 原始正文:', rawContent.substring(0, 100) + '...')
   console.log('[短链解析] 清理后正文:', content.substring(0, 100) + '...')

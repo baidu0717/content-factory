@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import XHSEmojiPicker from './XHSEmojiPicker'
-import { type XHSEmoji, hasXHSEmoji, extractEmojis } from '@/lib/xiaohongshu-emojis'
+import { hasXHSEmoji, extractEmojis } from '@/lib/xiaohongshu-emojis'
+
+type XHSEmoji = { code: string; name: string }
 
 interface XHSEmojiTextEditorProps {
   value: string
