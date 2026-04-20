@@ -406,24 +406,31 @@ function RewritePageContent() {
       console.log('[发布] 图片上传完成，获得', imageUrls.length, '个URL')
       setUploadProgress(60)
 
-      // 步骤2：调用小红书发布API（直接发布，不保存到数据库）
+      // 步骤2：直接从浏览器调用 myaibot.vip（绕过Vercel服务器网络限制）
       setPublishStep('正在发布到小红书...')
       setUploadProgress(75)
 
-      const publishResponse = await fetch('/api/xiaohongshu/publish-direct', {
+      const myaibotApiKey = process.env.NEXT_PUBLIC_MYAIBOT_API_KEY
+      if (!myaibotApiKey) {
+        throw new Error('API密钥未配置（NEXT_PUBLIC_MYAIBOT_API_KEY）')
+      }
+
+      const publishResponse = await fetch('https://www.myaibot.vip/api/rednote/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: editableTitle,
-          content: editableTags ? `${editableContent}\n\n${editableTags}` : editableContent,
-          images: imageUrls
+          api_key: myaibotApiKey,
+          type: 'normal',
+          title: editableTitle.substring(0, 20),
+          content: (editableTags ? `${editableContent}\n\n${editableTags}` : editableContent).substring(0, 1000),
+          images: imageUrls.slice(0, 18)
         })
       })
 
       const publishResult = await publishResponse.json()
 
       if (!publishResult.success) {
-        throw new Error(publishResult.error || '发布到小红书失败')
+        throw new Error(publishResult.message || publishResult.error || '发布到小红书失败')
       }
 
       console.log('[发布] 发布成功:', publishResult.data)
@@ -431,8 +438,8 @@ function RewritePageContent() {
 
       // 步骤4：显示二维码
       setPublishResult({
-        qrCodeUrl: publishResult.data.qrCodeUrl,
-        noteId: publishResult.data.noteId
+        qrCodeUrl: publishResult.data?.qrcode,
+        noteId: publishResult.data?.id
       })
 
     } catch (error) {
