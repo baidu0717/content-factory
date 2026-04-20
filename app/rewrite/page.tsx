@@ -410,10 +410,9 @@ function RewritePageContent() {
       setPublishStep('正在发布到小红书...')
       setUploadProgress(75)
 
-      const myaibotApiKey = process.env.NEXT_PUBLIC_MYAIBOT_API_KEY
-      if (!myaibotApiKey) {
-        throw new Error('API密钥未配置（NEXT_PUBLIC_MYAIBOT_API_KEY）')
-      }
+      const keyRes = await fetch('/api/config/publish-key')
+      const { key: myaibotApiKey } = await keyRes.json()
+      if (!myaibotApiKey) throw new Error('API密钥未配置')
 
       const publishResponse = await fetch('https://www.myaibot.vip/api/rednote/publish', {
         method: 'POST',

@@ -70,9 +70,10 @@ export default function XiaohongshuPublishModal({
     setPublishResult(null)
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_MYAIBOT_API_KEY
+      const keyRes = await fetch('/api/config/publish-key')
+      const { key: apiKey } = await keyRes.json()
       if (!apiKey) {
-        setPublishResult({ success: false, error: 'API密钥未配置（NEXT_PUBLIC_MYAIBOT_API_KEY）' })
+        setPublishResult({ success: false, error: 'API密钥未配置' })
         return
       }
 
