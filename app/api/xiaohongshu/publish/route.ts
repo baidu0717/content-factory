@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const runtime = 'edge'
+export const preferredRegion = ['hkg1', 'sin1', 'iad1']
+
 import {
   extractImagesFromMarkdown,
   getFirstImageAsCover,

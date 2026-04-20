@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const runtime = 'edge'
+export const preferredRegion = ['hkg1', 'sin1', 'iad1']
+
 // 从环境变量获取小红书API配置 (myaibot.vip)
 const MYAIBOT_API_KEY = process.env.MYAIBOT_API_KEY || ''
 const MYAIBOT_API_BASE = 'https://www.myaibot.vip/api/rednote/publish'

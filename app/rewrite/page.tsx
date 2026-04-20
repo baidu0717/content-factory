@@ -410,19 +410,13 @@ function RewritePageContent() {
       setPublishStep('正在发布到小红书...')
       setUploadProgress(75)
 
-      const keyRes = await fetch('/api/config/publish-key')
-      const { key: myaibotApiKey } = await keyRes.json()
-      if (!myaibotApiKey) throw new Error('API密钥未配置')
-
-      const publishResponse = await fetch('https://www.myaibot.vip/api/rednote/publish', {
+      const publishResponse = await fetch('/api/xiaohongshu/publish-direct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          api_key: myaibotApiKey,
-          type: 'normal',
-          title: editableTitle.substring(0, 20),
-          content: (editableTags ? `${editableContent}\n\n${editableTags}` : editableContent).substring(0, 1000),
-          images: imageUrls.slice(0, 18)
+          title: editableTitle,
+          content: editableTags ? `${editableContent}\n\n${editableTags}` : editableContent,
+          images: imageUrls
         })
       })
 
@@ -437,8 +431,8 @@ function RewritePageContent() {
 
       // 步骤4：显示二维码
       setPublishResult({
-        qrCodeUrl: publishResult.data?.qrcode,
-        noteId: publishResult.data?.id
+        qrCodeUrl: publishResult.data?.qrCodeUrl,
+        noteId: publishResult.data?.noteId
       })
 
     } catch (error) {

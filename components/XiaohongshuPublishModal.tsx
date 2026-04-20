@@ -70,46 +70,34 @@ export default function XiaohongshuPublishModal({
     setPublishResult(null)
 
     try {
-      const keyRes = await fetch('/api/config/publish-key')
-      const { key: apiKey } = await keyRes.json()
-      if (!apiKey) {
-        setPublishResult({ success: false, error: 'API密钥未配置' })
-        return
-      }
-
-      const plainContent = prepareContent(article.content, 1000)
-      const imagesFromMarkdown = extractImages(article.content)
-      const allImages = Array.from(new Set([...imagesFromMarkdown, ...(article.images || [])]))
-
-      console.log('[发布] 直接调用 myaibot.vip，图片数量:', allImages.length)
-
-      const response = await fetch('https://www.myaibot.vip/api/rednote/publish', {
+      const response = await fetch('/api/xiaohongshu/publish', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          api_key: apiKey,
-          type: 'normal',
-          title: article.title.substring(0, 20),
-          content: plainContent,
-          images: allImages.slice(0, 18),
+          articleId: article.id,
+          title: article.title,
+          content: article.content,
+          images: article.images || [],
         }),
       })
 
       const data = await response.json()
-      console.log('[发布] myaibot 响应:', data)
+      console.log('发布API响应:', data)
 
       if (data.success) {
         setPublishResult({
           success: true,
-          qrCodeUrl: data.data?.qrcode,
-          publishUrl: data.data?.url,
+          qrCodeUrl: data.data?.qrCodeUrl,
+          publishUrl: data.data?.publishUrl,
           message: data.message || '发布成功！请扫描二维码完成发布',
         })
         onPublishSuccess()
       } else {
         setPublishResult({
           success: false,
-          error: data.message || data.error || '发布失败',
+          error: data.error || '发布失败',
         })
       }
     } catch (error) {
