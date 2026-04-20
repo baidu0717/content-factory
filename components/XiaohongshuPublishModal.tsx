@@ -40,50 +40,79 @@ export default function XiaohongshuPublishModal({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const prepareContent = (markdown: string, maxLength = 1000): string => {
+    let text = markdown
+    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '')
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    text = text.replace(/^#{1,6}\s+/gm, '')
+    text = text.replace(/\*\*([^*]+)\*\*/g, '$1')
+    text = text.replace(/__([^_]+)__/g, '$1')
+    text = text.replace(/\*([^*]+)\*/g, '$1')
+    text = text.replace(/_([^_]+)_/g, '$1')
+    text = text.replace(/~~([^~]+)~~/g, '$1')
+    text = text.replace(/```[\s\S]*?```/g, '')
+    text = text.replace(/`([^`]+)`/g, '$1')
+    text = text.replace(/^[\s]*[-*+]\s+/gm, '')
+    text = text.replace(/^[\s]*\d+\.\s+/gm, '')
+    text = text.replace(/^>\s+/gm, '')
+    text = text.replace(/\n{3,}/g, '\n\n')
+    text = text.trim()
+    return text.substring(0, maxLength)
+  }
+
+  const extractImages = (markdown: string): string[] => {
+    const matches = markdown.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)
+    return Array.from(matches).map(m => m[2])
+  }
+
   const handlePublish = async () => {
     setIsPublishing(true)
     setPublishResult(null)
 
     try {
-      console.log('开始发布到小红书，文章ID:', article.id)
+      const apiKey = process.env.NEXT_PUBLIC_MYAIBOT_API_KEY
+      if (!apiKey) {
+        setPublishResult({ success: false, error: 'API密钥未配置（NEXT_PUBLIC_MYAIBOT_API_KEY）' })
+        return
+      }
 
-      const response = await fetch('/api/xiaohongshu/publish', {
+      const plainContent = prepareContent(article.content, 1000)
+      const imagesFromMarkdown = extractImages(article.content)
+      const allImages = Array.from(new Set([...imagesFromMarkdown, ...(article.images || [])]))
+
+      console.log('[发布] 直接调用 myaibot.vip，图片数量:', allImages.length)
+
+      const response = await fetch('https://www.myaibot.vip/api/rednote/publish', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          articleId: article.id,
-          title: article.title,
-          content: article.content,
-          images: article.images || [],
+          api_key: apiKey,
+          type: 'normal',
+          title: article.title.substring(0, 20),
+          content: plainContent,
+          images: allImages.slice(0, 18),
         }),
       })
 
       const data = await response.json()
-      console.log('发布API响应:', data)
-      console.log('二维码URL:', data.data?.qrCodeUrl)
+      console.log('[发布] myaibot 响应:', data)
 
       if (data.success) {
-        const result = {
+        setPublishResult({
           success: true,
-          qrCodeUrl: data.data?.qrCodeUrl,
-          publishUrl: data.data?.publishUrl,
+          qrCodeUrl: data.data?.qrcode,
+          publishUrl: data.data?.url,
           message: data.message || '发布成功！请扫描二维码完成发布',
-        }
-        console.log('设置publishResult:', result)
-        setPublishResult(result)
-
-        // 通知父组件发布成功
+        })
         onPublishSuccess()
       } else {
         setPublishResult({
           success: false,
-          error: data.error || '发布失败',
+          error: data.message || data.error || '发布失败',
         })
       }
     } catch (error) {
-      console.error('发布失败:', error)
+      console.error('[发布] 发布失败:', error)
       setPublishResult({
         success: false,
         error: error instanceof Error ? error.message : '发布失败，请稍后重试',
