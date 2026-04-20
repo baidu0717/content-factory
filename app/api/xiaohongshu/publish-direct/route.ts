@@ -11,6 +11,7 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now()
   console.log('\n' + '='.repeat(80))
   console.log('📝 [小红书直接发布] 开始处理发布请求')
+  console.log('🔑 MYAIBOT_API_KEY 长度:', MYAIBOT_API_KEY.length, '前6位:', MYAIBOT_API_KEY.substring(0, 6))
 
   try {
     // 解析请求体
