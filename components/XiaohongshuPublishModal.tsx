@@ -54,6 +54,9 @@ export default function XiaohongshuPublishModal({
         },
         body: JSON.stringify({
           articleId: article.id,
+          title: article.title,
+          content: article.content,
+          images: article.images || [],
         }),
       })
 

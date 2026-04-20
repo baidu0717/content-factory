@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDb } from '@/lib/db'
 import {
   extractImagesFromMarkdown,
-  markdownToPlainText,
   getFirstImageAsCover,
   extractImagesExcludingCover,
   prepareXiaohongshuContent
@@ -21,17 +19,17 @@ export async function POST(req: NextRequest) {
   console.log('📝 [小红书发布] 开始处理发布请求')
 
   try {
-    // 解析请求体
+    // 解析请求体（支持直接传入文章数据，无需DB查询）
     const body = await req.json()
-    const { articleId } = body
+    const { articleId, title: bodyTitle, content: bodyContent, tags: bodyTags, images: bodyImages } = body
 
     console.log('文章ID:', articleId)
 
-    // 验证参数
-    if (!articleId) {
-      console.log('❌ 缺少文章ID')
+    // 验证参数：必须有articleId或直接的title+content
+    if (!articleId && (!bodyTitle || !bodyContent)) {
+      console.log('❌ 缺少文章ID或文章内容')
       return NextResponse.json(
-        { success: false, error: '缺少文章ID' },
+        { success: false, error: '缺少文章数据' },
         { status: 400 }
       )
     }
@@ -45,30 +43,16 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 从数据库获取文章
-    console.log('📖 从数据库读取文章...')
-    const db = getDb()
-    const stmt = db.prepare('SELECT * FROM articles WHERE id = ?')
-    const article: any = stmt.get(articleId)
+    // 使用直接传入的文章数据（Vercel环境无法使用SQLite）
+    console.log('📖 使用请求体中的文章数据...')
+    const title = bodyTitle
+    const content = bodyContent
+    const tags = bodyTags || []
+    const imagesFromDb = Array.isArray(bodyImages) ? bodyImages : []
 
-    if (!article) {
-      console.log('❌ 文章不存在')
-      return NextResponse.json(
-        { success: false, error: '文章不存在' },
-        { status: 404 }
-      )
-    }
-
-    console.log('✅ 文章读取成功:')
-    console.log('  - 标题:', article.title)
-    console.log('  - 内容长度:', article.content?.length || 0)
-
-    // 提取文章数据
-    const { title, content, tags: tagsJson, images: imagesJson } = article
-
-    // 解析 JSON 字段
-    const tags = tagsJson ? JSON.parse(tagsJson) : []
-    const imagesFromDb = imagesJson ? JSON.parse(imagesJson) : []
+    console.log('✅ 文章数据:')
+    console.log('  - 标题:', title)
+    console.log('  - 内容长度:', content?.length || 0)
 
     console.log('  - 标签数量:', tags.length)
     console.log('  - 数据库图片数量:', imagesFromDb.length)
@@ -159,33 +143,6 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 }
       )
-    }
-
-    // 7. 更新数据库中的文章状态
-    console.log('\n💾 更新数据库文章状态...')
-    try {
-      // 先获取当前的 platforms 数组
-      const articleStmt = db.prepare('SELECT platforms FROM articles WHERE id = ?')
-      const article = articleStmt.get(articleId) as { platforms: string } | undefined
-      const currentPlatforms = article?.platforms ? JSON.parse(article.platforms) : []
-
-      // 如果 xiaohongshu 不在数组中，才添加
-      if (!currentPlatforms.includes('xiaohongshu')) {
-        currentPlatforms.push('xiaohongshu')
-      }
-
-      const updateStmt = db.prepare(`
-        UPDATE articles
-        SET status = 'published',
-            platforms = ?,
-            published_at = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `)
-      updateStmt.run(JSON.stringify(currentPlatforms), Date.now(), articleId)
-      console.log('✅ 数据库更新成功')
-    } catch (dbError) {
-      console.error('⚠️  数据库更新失败（不影响发布）:', dbError)
     }
 
     const endTime = Date.now()
