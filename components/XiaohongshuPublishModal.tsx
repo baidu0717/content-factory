@@ -296,21 +296,14 @@ export default function XiaohongshuPublishModal({
                     </div>
                   </div>
 
-                  {/* 二维码显示 - 使用iframe加载外部页面 */}
+                  {/* 二维码显示 */}
                   <div className="flex justify-center py-4">
-                    <div className="relative w-full">
-                      <div className="bg-white rounded-xl shadow-md border-4 border-red-200 overflow-hidden">
-                        <iframe
-                          src={publishResult.qrCodeUrl}
-                          title="小红书发布二维码"
-                          className="w-full h-[600px] border-0"
-                          sandbox="allow-scripts allow-same-origin allow-forms"
-                        />
-                      </div>
-                      {/* 小红书logo标识 */}
-                      <div className="absolute -top-3 -right-3 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg z-10">
-                        小红书专用
-                      </div>
+                    <div className="bg-white rounded-xl shadow-md border-4 border-red-200 p-4">
+                      <img
+                        src={publishResult.qrCodeUrl}
+                        alt="小红书发布二维码"
+                        className="w-48 h-48 object-contain"
+                      />
                     </div>
                   </div>
 

@@ -154,8 +154,8 @@ export async function POST(req: NextRequest) {
 
     console.log('\n✅ 发布成功!')
     console.log('总耗时:', totalDuration + 'ms')
-    console.log('二维码URL:', responseData.data?.xiaohongshu_qr_image_url)
-    console.log('发布URL:', responseData.data?.publish_url)
+    console.log('二维码:', responseData.data?.qrcode ? '已返回(base64)' : '未返回')
+    console.log('发布URL:', responseData.data?.url)
     console.log('='.repeat(80))
 
     // 8. 返回成功结果
@@ -163,11 +163,10 @@ export async function POST(req: NextRequest) {
       success: true,
       data: {
         id: responseData.data?.id,
-        noteId: responseData.data?.note_id,
+        noteId: responseData.data?.id,
         title: responseData.data?.title,
-        qrCodeUrl: responseData.data?.xiaohongshu_qr_image_url,
-        publishUrl: responseData.data?.publish_url,
-        coverImage: responseData.data?.cover_image,
+        qrCodeUrl: responseData.data?.qrcode,
+        publishUrl: responseData.data?.url,
         createdAt: responseData.data?.created_at
       },
       message: '发布成功！请扫描二维码在手机端完成发布'
