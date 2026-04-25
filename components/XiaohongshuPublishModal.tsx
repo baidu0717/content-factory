@@ -83,7 +83,13 @@ export default function XiaohongshuPublishModal({
         }),
       })
 
-      const data = await response.json()
+      const responseText = await response.text()
+      let data: any = {}
+      try {
+        data = JSON.parse(responseText)
+      } catch {
+        throw new Error(`服务器返回异常 (${response.status}): ${responseText.substring(0, 100)}`)
+      }
       console.log('发布API响应:', data)
 
       if (data.success) {

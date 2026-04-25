@@ -66,8 +66,9 @@ export async function POST(req: NextRequest) {
     const imagesFromMarkdown = extractImagesFromMarkdown(content)
     console.log('  - Markdown中的图片数量:', imagesFromMarkdown.length)
 
-    // 合并所有图片（去重）
+    // 合并所有图片（去重），过滤掉 base64 内联图和超长 URL（防止请求体过大）
     const allImages = Array.from(new Set([...imagesFromMarkdown, ...imagesFromDb]))
+      .filter(url => !url.startsWith('data:') && url.length < 2000)
     console.log('  - 合并后总图片数量:', allImages.length)
 
     // 2. 获取封面图（第一张图片）
@@ -121,8 +122,19 @@ export async function POST(req: NextRequest) {
     console.log('状态码:', response.status)
     console.log('状态文本:', response.statusText)
 
-    // 解析响应
-    const responseData = await response.json()
+    // 解析响应（防止上游返回非 JSON 时抛出）
+    const responseText = await response.text()
+    console.log('原始响应:', responseText.substring(0, 200))
+    let responseData: any = {}
+    try {
+      responseData = JSON.parse(responseText)
+    } catch {
+      console.log('❌ 响应不是有效JSON，原始内容:', responseText)
+      return NextResponse.json(
+        { success: false, error: `API返回异常: ${responseText.substring(0, 100)}` },
+        { status: response.status || 500 }
+      )
+    }
     console.log('响应数据:', JSON.stringify(responseData, null, 2))
 
     // 检查响应状态
