@@ -396,7 +396,13 @@ function RewritePageContent() {
         body: formData
       })
 
-      const uploadResult = await uploadResponse.json()
+      const uploadText = await uploadResponse.text()
+      let uploadResult: any = {}
+      try {
+        uploadResult = JSON.parse(uploadText)
+      } catch {
+        throw new Error(`图片上传失败(${uploadResponse.status}): ${uploadText.substring(0, 100)}`)
+      }
 
       if (!uploadResult.success) {
         throw new Error(uploadResult.error || '图片上传失败')
@@ -420,7 +426,13 @@ function RewritePageContent() {
         })
       })
 
-      const publishResult = await publishResponse.json()
+      const publishText = await publishResponse.text()
+      let publishResult: any = {}
+      try {
+        publishResult = JSON.parse(publishText)
+      } catch {
+        throw new Error(`发布请求失败(${publishResponse.status}): ${publishText.substring(0, 100)}`)
+      }
 
       if (!publishResult.success) {
         throw new Error(publishResult.message || publishResult.error || '发布到小红书失败')

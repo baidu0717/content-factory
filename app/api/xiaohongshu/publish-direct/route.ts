@@ -87,8 +87,19 @@ export async function POST(req: NextRequest) {
     console.log('状态码:', response.status)
     console.log('状态文本:', response.statusText)
 
-    // 解析响应
-    const responseData = await response.json()
+    // 解析响应（防止上游返回非 JSON 时抛出）
+    const responseText = await response.text()
+    console.log('原始响应:', responseText.substring(0, 300))
+    let responseData: any = {}
+    try {
+      responseData = JSON.parse(responseText)
+    } catch {
+      console.log('❌ 响应不是有效JSON，原始内容:', responseText)
+      return NextResponse.json(
+        { success: false, error: `API返回异常(${response.status}): ${responseText.substring(0, 100)}` },
+        { status: response.status || 500 }
+      )
+    }
     console.log('响应数据:', JSON.stringify(responseData, null, 2))
 
     // 检查响应状态
