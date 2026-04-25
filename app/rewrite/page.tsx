@@ -369,46 +369,6 @@ function RewritePageContent() {
     }
   }, [])
 
-  // ===== 图片压缩（Canvas，限制到 1MB 以内）=====
-  const compressImage = (file: File, maxBytes = 1024 * 1024): Promise<File> => {
-    return new Promise((resolve) => {
-      if (file.size <= maxBytes) { resolve(file); return }
-      const img = new Image()
-      const url = URL.createObjectURL(file)
-      img.onload = () => {
-        URL.revokeObjectURL(url)
-        let { width, height } = img
-        let quality = 0.85
-        const canvas = document.createElement('canvas')
-        // 若尺寸过大先缩小
-        const maxDim = 2048
-        if (width > maxDim || height > maxDim) {
-          const scale = maxDim / Math.max(width, height)
-          width = Math.round(width * scale)
-          height = Math.round(height * scale)
-        }
-        canvas.width = width
-        canvas.height = height
-        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
-        const tryCompress = () => {
-          canvas.toBlob((blob) => {
-            if (!blob) { resolve(file); return }
-            if (blob.size <= maxBytes || quality <= 0.3) {
-              resolve(new File([blob], file.name, { type: 'image/jpeg' }))
-            } else {
-              quality -= 0.1
-              canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
-              tryCompress()
-            }
-          }, 'image/jpeg', quality)
-        }
-        tryCompress()
-      }
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
-      img.src = url
-    })
-  }
-
   // ===== 发布笔记 =====
   const handlePublish = useCallback(async () => {
     if (!editableTitle || !editableContent || uploadedFiles.length === 0) {
@@ -420,42 +380,34 @@ function RewritePageContent() {
     setPublishResult(null)
 
     try {
-      // 步骤1：压缩图片后上传到Vercel Blob
-      setPublishStep('正在压缩图片...')
+      // 步骤1：逐张上传图片到Vercel Blob（避免批量上传超过 4.5MB 限制）
+      setPublishStep(`正在上传图片 0/${uploadedFiles.length}...`)
       setUploadProgress(0)
 
-      const compressedFiles = await Promise.all(uploadedFiles.map(f => compressImage(f)))
-      console.log('[发布] 压缩完成，各文件大小(KB):', compressedFiles.map(f => Math.round(f.size / 1024)))
-
-      setPublishStep('正在上传图片...')
-
-      const formData = new FormData()
-      compressedFiles.forEach(file => {
-        formData.append('images', file)
-      })
-
-      console.log('[发布] 开始上传', compressedFiles.length, '张图片')
-
-      const uploadResponse = await fetch('/api/upload/images', {
-        method: 'POST',
-        body: formData
-      })
-
-      const uploadText = await uploadResponse.text()
-      let uploadResult: any = {}
-      try {
-        uploadResult = JSON.parse(uploadText)
-      } catch {
-        throw new Error(`图片上传失败(${uploadResponse.status}): ${uploadText.substring(0, 100)}`)
+      const imageUrls: string[] = []
+      for (let i = 0; i < uploadedFiles.length; i++) {
+        setPublishStep(`正在上传图片 ${i + 1}/${uploadedFiles.length}...`)
+        const singleForm = new FormData()
+        singleForm.append('images', uploadedFiles[i])
+        const uploadResponse = await fetch('/api/upload/images', {
+          method: 'POST',
+          body: singleForm
+        })
+        const uploadText = await uploadResponse.text()
+        let uploadResult: any = {}
+        try {
+          uploadResult = JSON.parse(uploadText)
+        } catch {
+          throw new Error(`图片上传失败(${uploadResponse.status}): ${uploadText.substring(0, 100)}`)
+        }
+        if (!uploadResult.success) {
+          throw new Error(uploadResult.error || `第${i + 1}张图片上传失败`)
+        }
+        imageUrls.push(...uploadResult.data.urls)
+        setUploadProgress(Math.round((i + 1) / uploadedFiles.length * 60))
       }
 
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error || '图片上传失败')
-      }
-
-      const imageUrls = uploadResult.data.urls
       console.log('[发布] 图片上传完成，获得', imageUrls.length, '个URL')
-      setUploadProgress(60)
 
       // 步骤2：直接从浏览器调用 myaibot.vip（绕过Vercel服务器网络限制）
       setPublishStep('正在发布到小红书...')
