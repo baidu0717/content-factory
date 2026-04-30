@@ -396,8 +396,8 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 /**
  * 解析小红书链接（统一入口 - 三重容错机制）
  * 1. 第一次尝试极致了API（完整数据）
- * 2. 失败后等待2秒，重试极致了API（应对临时波动）
- * 3. 两次都失败，降级到哼哼猫API（免费但数据不全）
+ * 2. 失败后降级到哼哼猫API（免费但数据不全）
+ * 3. 两次都失败，兜底保存（仅URL，飞书留空记录等待手动补充）
  */
 async function parseXiaohongshu(url: string): Promise<{
   title: string
@@ -410,11 +410,11 @@ async function parseXiaohongshu(url: string): Promise<{
   collectedCount: number
   commentCount: number
   publishTime: string
-  apiUsed?: 'jizhile' | 'henghengmao'
+  apiUsed?: 'jizhile' | 'henghengmao' | 'fallback'
   apiError?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
-  console.log('[快捷保存] 策略: 极致了(第1次) → 极致了(第2次重试) → 哼哼猫(降级)')
+  console.log('[快捷保存] 策略: 302.ai → 哼哼猫 → 兜底保存')
 
   // 尝试1: 极致了API（优先）
   try {
@@ -443,7 +443,23 @@ async function parseXiaohongshu(url: string): Promise<{
     } catch (henghengmaoError: any) {
       const henghengmaoMsg = henghengmaoError?.message || String(henghengmaoError)
       console.error('[快捷保存] ❌ 哼哼猫API也失败:', henghengmaoMsg)
-      throw new Error(`解析失败 - 极致了: ${errorMsg1}; 哼哼猫: ${henghengmaoMsg}`)
+      console.warn('[快捷保存] 🆘 两个API均失败，启用兜底保存（飞书留空记录）...')
+
+      // 兜底：不抛错，返回最小化数据，确保飞书至少有一条记录
+      return {
+        title: '⚠️ 待补充',
+        content: '',
+        tags: '',
+        images: [],
+        authorName: '',
+        viewCount: 0,
+        likedCount: 0,
+        collectedCount: 0,
+        commentCount: 0,
+        publishTime: '',
+        apiUsed: 'fallback',
+        apiError: `302.ai: ${errorMsg1} | 哼哼猫: ${henghengmaoMsg}`
+      }
     }
   }
 }
@@ -881,18 +897,22 @@ export async function POST(request: NextRequest) {
       // 所有耗时操作移到 after() 后台执行（响应发出后才开始）
       after(async () => {
         try {
-          const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed } = await parseXiaohongshu(url)
+          const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
+          // 兜底时把错误原因写入备注，方便飞书里识别
+          const finalRemark = apiUsed === 'fallback'
+            ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
+            : remark
           const { recordId } = await saveToFeishu(
             finalAppToken, finalTableId,
             title, content, tags,
             [],
             url, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime,
-            remark
+            finalRemark
           )
           if (images.length > 0 && recordId) {
             await processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
           }
-          console.log('[快捷保存-后台] ✅ 保存成功:', title)
+          console.log('[快捷保存-后台] ✅ 保存成功:', title, apiUsed === 'fallback' ? '（兜底记录）' : '')
         } catch (err) {
           console.error('[快捷保存-后台] ❌ 失败:', err)
         }
@@ -909,6 +929,11 @@ export async function POST(request: NextRequest) {
     // 同步模式（原有逻辑）
     // 1. 解析小红书链接（自动选择API）
     const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
+
+    // 兜底时把错误原因写入备注
+    const finalRemark = apiUsed === 'fallback'
+      ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
+      : remark
 
     // 2. 处理图片：下载并上传到飞书，获取 file_token
     const fileTokens = await processImages(images, finalAppToken)
@@ -928,7 +953,7 @@ export async function POST(request: NextRequest) {
       collectedCount,
       commentCount,
       publishTime,
-      remark  // 新增：传递备注
+      finalRemark
     )
 
     const duration = Date.now() - startTime
@@ -945,6 +970,8 @@ export async function POST(request: NextRequest) {
       apiInfo = '\n🎯 302.ai API'
     } else if (apiUsed === 'henghengmao') {
       apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
+    } else if (apiUsed === 'fallback') {
+      apiInfo = '\n🆘 API全部失败，已创建空记录，请到飞书手动补充内容'
     }
 
     // 图片状态提示
