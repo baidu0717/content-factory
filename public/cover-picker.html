@@ -107,6 +107,8 @@
     font-family: inherit;
     background: transparent;
     margin-bottom: 4px;
+    height: 2.8em;
+    overflow: hidden;
   }
   .card-title::placeholder { color: #ccc; }
   .card-footer {
@@ -133,30 +135,34 @@
   <div class="feed" id="feed">
     <!-- 4 张空卡片，JS 会把拖入的图片填进来 -->
     <div class="card" data-slot="0">
+      <!-- JS replaces this div with <img class="cover"> on drop -->
       <div class="cover-empty">🖼</div>
       <div class="card-body">
-        <textarea class="card-title" rows="2" placeholder="点击输入笔记标题…"></textarea>
+        <textarea class="card-title" placeholder="点击输入笔记标题…"></textarea>
         <div class="card-footer"><span class="heart">♡</span></div>
       </div>
     </div>
     <div class="card" data-slot="1">
+      <!-- JS replaces this div with <img class="cover"> on drop -->
       <div class="cover-empty">🖼</div>
       <div class="card-body">
-        <textarea class="card-title" rows="2" placeholder="点击输入笔记标题…"></textarea>
+        <textarea class="card-title" placeholder="点击输入笔记标题…"></textarea>
         <div class="card-footer"><span class="heart">♡</span></div>
       </div>
     </div>
     <div class="card" data-slot="2">
+      <!-- JS replaces this div with <img class="cover"> on drop -->
       <div class="cover-empty">🖼</div>
       <div class="card-body">
-        <textarea class="card-title" rows="2" placeholder="点击输入笔记标题…"></textarea>
+        <textarea class="card-title" placeholder="点击输入笔记标题…"></textarea>
         <div class="card-footer"><span class="heart">♡</span></div>
       </div>
     </div>
     <div class="card" data-slot="3">
+      <!-- JS replaces this div with <img class="cover"> on drop -->
       <div class="cover-empty">🖼</div>
       <div class="card-body">
-        <textarea class="card-title" rows="2" placeholder="点击输入笔记标题…"></textarea>
+        <textarea class="card-title" placeholder="点击输入笔记标题…"></textarea>
         <div class="card-footer"><span class="heart">♡</span></div>
       </div>
     </div>
