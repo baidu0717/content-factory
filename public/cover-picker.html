@@ -174,6 +174,11 @@
   // 当前待填的槽位索引（0-3）
   let nextSlot = 0;
 
+  const phone = document.querySelector('.phone');
+  const shadowDefault   = '0 0 0 10px #222, 0 0 0 12px #3a3a3a, 0 30px 60px rgba(0,0,0,0.6)';
+  const shadowHighlight = '0 0 0 10px #222, 0 0 0 12px #ff2442, 0 30px 60px rgba(0,0,0,0.6)';
+  let dragDepth = 0;
+
   // 把一张图片的 dataURL 填入指定槽位
   function fillSlot(slot, dataUrl) {
     const card = document.querySelector(`.card[data-slot="${slot}"]`);
@@ -207,29 +212,19 @@
   }
 
   // ── 全页面拖拽监听 ──
-  // 阻止浏览器默认行为（否则会打开图片）
-  document.addEventListener('dragover', (e) => e.preventDefault());
+  function resetHighlight() {
+    phone.style.boxShadow = shadowDefault;
+  }
+
+  document.addEventListener('dragover',  (e) => e.preventDefault());
+  document.addEventListener('dragenter', () => { dragDepth++; phone.style.boxShadow = shadowHighlight; });
+  document.addEventListener('dragleave', () => { if (--dragDepth === 0) resetHighlight(); });
   document.addEventListener('drop', (e) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files);
-    files.forEach(loadFile);
+    dragDepth = 0;
+    Array.from(e.dataTransfer.files).forEach(loadFile);
+    resetHighlight();
   });
-
-  // 拖拽进入时给手机框加个高亮提示
-  document.addEventListener('dragenter', () => {
-    document.querySelector('.phone').style.boxShadow =
-      '0 0 0 10px #222, 0 0 0 12px #ff2442, 0 30px 60px rgba(0,0,0,0.6)';
-  });
-  document.addEventListener('dragleave', (e) => {
-    // 只在鼠标完全离开 viewport 时取消高亮
-    if (e.clientX === 0 && e.clientY === 0) resetHighlight();
-  });
-  document.addEventListener('drop', resetHighlight);
-
-  function resetHighlight() {
-    document.querySelector('.phone').style.boxShadow =
-      '0 0 0 10px #222, 0 0 0 12px #3a3a3a, 0 30px 60px rgba(0,0,0,0.6)';
-  }
 })();
 </script>
 
