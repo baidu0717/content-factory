@@ -171,7 +171,7 @@
 
 <script>
 (function () {
-  // 当前待填的槽位索引（0-3）
+  // 下一个待填槽位的索引（0 起，无上限）
   let nextSlot = 0;
 
   const phone = document.querySelector('.phone');
@@ -208,6 +208,7 @@
     // 如果 slot >= 4，动态追加新卡片
     if (slot >= 4) {
       const feed = document.getElementById('feed');
+      if (!feed) return;
       const card = document.createElement('div');
       card.className = 'card';
       card.dataset.slot = slot;
