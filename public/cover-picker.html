@@ -170,7 +170,67 @@
 </div>
 
 <script>
-// Task 2 的 JS 在这里添加
+(function () {
+  // 当前待填的槽位索引（0-3）
+  let nextSlot = 0;
+
+  // 把一张图片的 dataURL 填入指定槽位
+  function fillSlot(slot, dataUrl) {
+    const card = document.querySelector(`.card[data-slot="${slot}"]`);
+    if (!card) return;
+
+    // 移除占位 div，插入真实 img
+    const empty = card.querySelector('.cover-empty');
+    if (empty) {
+      const img = document.createElement('img');
+      img.className = 'cover';
+      img.src = dataUrl;
+      card.insertBefore(img, empty);
+      empty.remove();
+    } else {
+      // 已有图片则替换 src
+      card.querySelector('.cover').src = dataUrl;
+    }
+  }
+
+  // 读取 File 对象并填入下一个空槽
+  function loadFile(file) {
+    if (!file.type.startsWith('image/')) return;
+    if (nextSlot > 3) return; // 4 格全满后忽略（Task 3 会改掉这个限制）
+
+    const slot = nextSlot;
+    nextSlot++;
+
+    const reader = new FileReader();
+    reader.onload = (e) => fillSlot(slot, e.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  // ── 全页面拖拽监听 ──
+  // 阻止浏览器默认行为（否则会打开图片）
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    files.forEach(loadFile);
+  });
+
+  // 拖拽进入时给手机框加个高亮提示
+  document.addEventListener('dragenter', () => {
+    document.querySelector('.phone').style.boxShadow =
+      '0 0 0 10px #222, 0 0 0 12px #ff2442, 0 30px 60px rgba(0,0,0,0.6)';
+  });
+  document.addEventListener('dragleave', (e) => {
+    // 只在鼠标完全离开 viewport 时取消高亮
+    if (e.clientX === 0 && e.clientY === 0) resetHighlight();
+  });
+  document.addEventListener('drop', resetHighlight);
+
+  function resetHighlight() {
+    document.querySelector('.phone').style.boxShadow =
+      '0 0 0 10px #222, 0 0 0 12px #3a3a3a, 0 30px 60px rgba(0,0,0,0.6)';
+  }
+})();
 </script>
 
 </body>
