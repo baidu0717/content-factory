@@ -130,18 +130,28 @@ async function fetchNoteDetails(noteId: string) {
         }
       })
     }
-    console.log('[极致了API] - 图片数量:', images.length)
+    console.log('[302.ai API] - 图片数量:', images.length)
 
     // 提取文本内容和话题标签
     const rawText = note.desc || note.title || ''
 
-    // 提取话题标签
-    const tagRegex = /#[^#]+?(?:\[话题\])?#/g
-    const tags = rawText.match(tagRegex) || []
-    const tagsString = tags.join(' ')
+    // 优先从结构化字段提取话题标签
+    const tagSet = new Set<string>()
+    if (Array.isArray(note.hash_tag)) {
+      note.hash_tag.forEach((t: any) => { if (t.name) tagSet.add(`#${t.name}`) })
+    }
+    if (Array.isArray(note.topics)) {
+      note.topics.forEach((t: any) => { if (t.name) tagSet.add(`#${t.name}`) })
+    }
+    // 兜底：从 desc 正文中用正则提取
+    if (tagSet.size === 0) {
+      const tagRegex = /#([^#\s\[]+)(?:\[话题\])?#?/g
+      ;[...rawText.matchAll(tagRegex)].forEach(m => tagSet.add(`#${m[1]}`))
+    }
+    const tagsString = [...tagSet].join(' ')
 
-    // 移除话题标签,得到纯文本
-    const textWithoutTags = rawText.replace(tagRegex, '').trim()
+    // 移除话题标签，得到纯文本
+    const textWithoutTags = rawText.replace(/#[^#\s\[]+(?:\[话题\])?#?/g, '').trim()
 
     // 分离标题和正文
     let title = ''
@@ -184,7 +194,7 @@ async function fetchNoteDetails(noteId: string) {
       id: note.note_id || noteId,
     }
   } catch (error) {
-    console.error('[极致了API] 调用异常:', error)
+    console.error('[302.ai API] 调用异常:', error)
     return null
   }
 }
@@ -227,7 +237,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[小红书解析] 提取到笔记ID:', noteId)
 
-    // 调用极致了API获取完整笔记详情
+    // 调用302.ai API获取完整笔记详情
     const noteDetails = await fetchNoteDetails(noteId)
 
     if (!noteDetails) {

@@ -91,7 +91,7 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
 /**
  * 解析小红书链接（使用 302.ai API - 主力）
  */
-async function parseXiaohongshuWithJizhile(url: string) {
+async function parseXiaohongshuWith302ai(url: string) {
   console.log('[快捷保存-302.ai] 开始解析链接:', url)
 
   // 302.ai API 需要 note_id，先解析短链接获取
@@ -222,13 +222,13 @@ async function parseXiaohongshuWithJizhile(url: string) {
       // 格式：https://sns-xxx.rednotecdn.com/path?imageView2/2/w/1440/format/jpg
       const simpleUrl = `${baseUrl}?imageView2/2/w/1440/format/jpg`
 
-      console.log('[快捷保存-极致了] 简化图片URL:', simpleUrl.substring(0, 100) + '...')
+      console.log('[快捷保存-302.ai] 简化图片URL:', simpleUrl.substring(0, 100) + '...')
 
       return simpleUrl
     })
     .filter(Boolean)
 
-  // 提取互动数据（极致了API的优势）
+  // 提取互动数据（302.ai API的优势）
   const authorName = userInfo.nickname || userInfo.name || ''
   const viewCount = parseInt(noteData.view_count || '0')
   const likedCount = parseInt(noteData.liked_count || '0')
@@ -462,7 +462,7 @@ async function fetchStatsViaSearch(noteId: string, title: string): Promise<{
 
 /**
  * 解析小红书链接（统一入口 - 三重容错机制）
- * 1. 第一次尝试极致了API（完整数据）
+ * 1. 第一次尝试302.ai API（完整数据）
  * 2. 失败后降级到哼哼猫API（免费但数据不全）
  * 3. 两次都失败，兜底保存（仅URL，飞书留空记录等待手动补充）
  */
@@ -477,24 +477,24 @@ async function parseXiaohongshu(url: string): Promise<{
   collectedCount: number
   commentCount: number
   publishTime: string
-  apiUsed?: 'jizhile' | 'henghengmao' | 'fallback'
+  apiUsed?: '302ai' | 'henghengmao' | 'fallback'
   apiError?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
   console.log('[快捷保存] 策略: 302.ai → 哼哼猫 → 兜底保存')
 
-  // 尝试1: 极致了API（优先）
+  // 尝试1: 302.ai API（优先）
   try {
-    console.log('[快捷保存] 🎯 尝试使用极致了API（第1次）...')
-    const result = await parseXiaohongshuWithJizhile(url)
-    console.log('[快捷保存] ✅ 极致了API成功！使用完整数据')
+    console.log('[快捷保存] 🎯 尝试使用302.ai API（第1次）...')
+    const result = await parseXiaohongshuWith302ai(url)
+    console.log('[快捷保存] ✅ 302.ai API成功！使用完整数据')
     return {
       ...result,
-      apiUsed: 'jizhile'
+      apiUsed: '302ai'
     }
-  } catch (jizhileError1: any) {
-    const errorMsg1 = jizhileError1?.message || String(jizhileError1)
-    console.warn('[快捷保存] ⚠️  极致了API失败:', errorMsg1)
+  } catch (error302ai: any) {
+    const errorMsg1 = error302ai?.message || String(error302ai)
+    console.warn('[快捷保存] ⚠️  302.ai API失败:', errorMsg1)
     console.warn('[快捷保存] 直接降级到哼哼猫API（无等待）...')
 
     // 尝试2: 哼哼猫API（备用，直接切换无需等待）
@@ -517,17 +517,17 @@ async function parseXiaohongshu(url: string): Promise<{
             if (!noteId && stats.foundNoteId && API_302AI_KEY) {
               try {
                 console.log('[快捷保存] 🔄 用搜索到的noteId重新调302.ai获取完整数据:', stats.foundNoteId)
-                const fullResult = await parseXiaohongshuWithJizhile(
+                const fullResult = await parseXiaohongshuWith302ai(
                   `https://www.xiaohongshu.com/explore/${stats.foundNoteId}`
                 )
                 console.log('[快捷保存] ✅ 通过搜索noteId成功获取302.ai完整数据')
-                return { ...fullResult, apiUsed: 'jizhile', apiError: `短链展开失败降级: ${errorMsg1}` }
+                return { ...fullResult, apiUsed: '302ai', apiError: `短链展开失败降级: ${errorMsg1}` }
               } catch (retryErr: any) {
                 console.warn('[快捷保存] 重试302.ai失败，使用哼哼猫+搜索数据:', retryErr?.message)
               }
             }
 
-            return { ...result, ...stats, apiUsed: 'henghengmao', apiError: `极致了失败: ${errorMsg1}` }
+            return { ...result, ...stats, apiUsed: 'henghengmao', apiError: `302.ai失败: ${errorMsg1}` }
           }
         } catch (statsErr: any) {
           console.warn('[快捷保存] 统计数据补充失败（非致命）:', statsErr?.message)
@@ -537,7 +537,7 @@ async function parseXiaohongshu(url: string): Promise<{
       return {
         ...result,
         apiUsed: 'henghengmao',
-        apiError: `极致了失败: ${errorMsg1}`
+        apiError: `302.ai失败: ${errorMsg1}`
       }
     } catch (henghengmaoError: any) {
       const henghengmaoMsg = henghengmaoError?.message || String(henghengmaoError)
@@ -568,7 +568,7 @@ async function parseXiaohongshu(url: string): Promise<{
  * 自动将 HEIF 格式转换为 JPEG（修改 URL 参数让小红书服务器返回 JPEG）
  *
  * 🔧 优化策略：
- * 1. 增加超时时间到120秒（极致了API的图片CDN可能较慢）
+ * 1. 增加超时时间到120秒（302.ai API的图片CDN可能较慢）
  * 2. 添加多个备用User-Agent（避免被CDN识别）
  * 3. 添加详细的错误日志
  */
@@ -788,7 +788,7 @@ async function processImages(imageUrls: string[], appToken: string): Promise<Arr
   // 如果有失败的图片，详细列出
   if (failedCount > 0) {
     console.error(`[图片处理] ⚠️⚠️⚠️ 有 ${failedCount} 张图片处理失败！⚠️⚠️⚠️`)
-    console.error(`[图片处理] 失败原因可能：1.极致了API图片URL失效 2.网络波动 3.CDN限制`)
+    console.error(`[图片处理] 失败原因可能：1.302.ai API图片URL失效 2.网络波动 3.CDN限制`)
     results.forEach((token, index) => {
       if (token === null) {
         console.error(`[图片处理] ❌❌❌ 第 ${index + 1} 张图片失败`)
@@ -1065,7 +1065,7 @@ export async function POST(request: NextRequest) {
 
     // 构建API使用提示
     let apiInfo = ''
-    if (apiUsed === 'jizhile') {
+    if (apiUsed === '302ai') {
       apiInfo = '\n🎯 302.ai API'
     } else if (apiUsed === 'henghengmao') {
       apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
