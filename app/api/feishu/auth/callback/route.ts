@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAppAccessToken } from '@/lib/feishuAuth'
+import { getAppAccessToken, injectUserTokenFromOAuth } from '@/lib/feishuAuth'
+import { writeFileSync, readFileSync } from 'fs'
+import { join } from 'path'
 
 const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
@@ -56,7 +58,25 @@ export async function GET(request: NextRequest) {
 
     console.log('[飞书回调] ✅ 成功获取 token')
     console.log('[飞书回调] access_token 有效期:', expires_in, '秒')
-    console.log('[飞书回调] refresh_token:', refresh_token)
+
+    // 注入到内存缓存（本地开发立即生效）
+    await injectUserTokenFromOAuth(access_token, refresh_token, expires_in)
+
+    // 本地开发时写入 .env.local 持久化
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        const envPath = join(process.cwd(), '.env.local')
+        let envContent = readFileSync(envPath, 'utf-8')
+        envContent = envContent.replace(
+          /FEISHU_REFRESH_TOKEN=.*/,
+          `FEISHU_REFRESH_TOKEN=${refresh_token}`
+        )
+        writeFileSync(envPath, envContent, 'utf-8')
+        console.log('[飞书回调] ✅ refresh_token 已写入 .env.local')
+      } catch (e) {
+        console.error('[飞书回调] 写入 .env.local 失败:', e)
+      }
+    }
 
     // 自动更新 Vercel 环境变量（如果在生产环境）
     const currentToken = process.env.FEISHU_REFRESH_TOKEN
