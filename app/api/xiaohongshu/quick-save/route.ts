@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse, after } from 'next/server'
-import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
+import { getAppAccessToken, getUserAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
+import axios from 'axios'
 
 // 302.ai API 配置（主力）
 const API_302AI_KEY = process.env.API_302AI_KEY || ''
 const API_302AI_BASE = 'https://api.302ai.cn'
+
+// 读取系统代理并构建 axios proxy 配置
+// Node.js 内置 fetch (undici) 不自动使用 https_proxy，axios 支持显式代理配置
+function getAxiosProxyConfig() {
+  const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY ||
+                   process.env.http_proxy || process.env.HTTP_PROXY || ''
+  if (!proxyUrl) return {}
+  try {
+    const u = new URL(proxyUrl)
+    return { proxy: { protocol: u.protocol.replace(':', ''), host: u.hostname, port: parseInt(u.port) || 80 } }
+  } catch { return {} }
+}
 
 // 哼哼猫 API 配置（备用，免费但数据不全）
 const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
@@ -87,33 +100,23 @@ async function parseXiaohongshuWithJizhile(url: string) {
   console.log('[快捷保存-302.ai] 调用302.ai API...')
   console.log('[快捷保存-302.ai] note_id:', noteId)
 
-  // 6秒超时（Vercel 10s 限制，留出余量给飞书保存）
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 6000)
-
-  let response: Response
+  // 使用 axios 发起请求（支持系统代理）
+  let data: any
   try {
-    response = await fetch(
+    const axiosResp = await axios.get(
       `${API_302AI_BASE}/tools/xiaohongshu/app/get_note_info?note_id=${noteId}`,
       {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${API_302AI_KEY}`,
-        },
-        signal: controller.signal
+        headers: { 'Authorization': `Bearer ${API_302AI_KEY}` },
+        timeout: 10000
       }
     )
-  } finally {
-    clearTimeout(timeout)
+    data = axiosResp.data
+  } catch (axiosErr: any) {
+    const status = axiosErr?.response?.status || 'timeout'
+    const errBody = JSON.stringify(axiosErr?.response?.data || {}).substring(0, 200)
+    console.error('[快捷保存-302.ai] API错误:', status, errBody)
+    throw new Error(`302.ai API请求失败: HTTP ${status}`)
   }
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error('[快捷保存-302.ai] API错误:', errorText)
-    throw new Error(`302.ai API请求失败: HTTP ${response.status}`)
-  }
-
-  const data = await response.json()
   console.log('[快捷保存-302.ai] 响应:', JSON.stringify(data).substring(0, 300))
 
   // 兼容两种响应结构
@@ -139,14 +142,23 @@ async function parseXiaohongshuWithJizhile(url: string) {
   // 只压缩行内多余空格，保留换行符（用 [^\S\n]+ 匹配非换行空白）
   content = content.replace(/[^\S\n]+/g, ' ').trim()
 
-  // 提取话题标签
-  const tagPattern = /#([^#\s]+)\[话题\]#/g
-  const tagMatches: string[] = []
-  let match
-  while ((match = tagPattern.exec(rawContent)) !== null) {
-    tagMatches.push('#' + match[1])
+  // 优先从结构化字段提取话题标签（302.ai API 把标签放在 hash_tag / topics，不在 desc 文本里）
+  const tagSet = new Set<string>()
+  if (Array.isArray(noteData.hash_tag)) {
+    noteData.hash_tag.forEach((t: any) => { if (t.name) tagSet.add(`#${t.name}`) })
   }
-  const tags = tagMatches.join(' ')
+  if (Array.isArray(noteData.topics)) {
+    noteData.topics.forEach((t: any) => { if (t.name) tagSet.add(`#${t.name}`) })
+  }
+  // 兜底：从 desc 正文中用正则提取
+  if (tagSet.size === 0) {
+    const tagPattern = /#([^#\s\[]+)(?:\[话题\])?#?/g
+    let match
+    while ((match = tagPattern.exec(rawContent)) !== null) {
+      tagSet.add('#' + match[1])
+    }
+  }
+  const tags = [...tagSet].join(' ')
 
   // 提取标题和纯正文（智能截取）
   let title = noteData.title || ''
@@ -394,6 +406,61 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
+ * 通过搜索接口补充笔记统计数据（当详情API失效时使用）
+ * 用标题关键词搜索，再按 note_id 匹配
+ */
+async function fetchStatsViaSearch(noteId: string, title: string): Promise<{
+  likedCount: number
+  collectedCount: number
+  commentCount: number
+  authorName: string
+  viewCount: number
+  publishTime: string
+  foundNoteId?: string
+}> {
+  // 取标题前12个字符作为搜索关键词（去掉特殊字符）
+  const keyword = title.replace(/[❗️‼️❓！？]/g, '').trim().substring(0, 12)
+  console.log('[搜索补充] 关键词:', keyword, '目标noteId:', noteId || '(短链，取第一条)')
+
+  const axiosResp = await axios.get(
+    `https://api.302ai.cn/tools/xiaohongshu/app/search_notes?keyword=${encodeURIComponent(keyword)}&page=1`,
+    {
+      headers: { 'Authorization': `Bearer ${API_302AI_KEY}` },
+      timeout: 8000
+    }
+  )
+  const data = axiosResp.data
+  if (data.error) throw new Error(data.error.message_cn || '搜索接口错误')
+
+  const items: any[] = data?.data?.data?.items || []
+
+  // noteId 为空（短链场景）时取第一条；否则按 noteId 精确匹配
+  const match = noteId
+    ? items.find((item: any) => item.note?.id === noteId)
+    : items[0]
+
+  if (!match) {
+    console.log('[搜索补充] 未在搜索结果中找到匹配笔记')
+    return { likedCount: 0, collectedCount: 0, commentCount: 0, authorName: '', viewCount: 0, publishTime: '' }
+  }
+
+  const note = match.note
+  const publishTime = note.timestamp ? new Date(note.timestamp * 1000).toISOString().split('T')[0] : ''
+
+  console.log('[搜索补充] 找到笔记:', note.id, '作者:', note.user?.nickname)
+
+  return {
+    likedCount: note.liked_count || 0,
+    collectedCount: note.collected_count || 0,
+    commentCount: note.comments_count || 0,
+    authorName: note.user?.nickname || '',
+    viewCount: 0,
+    publishTime,
+    foundNoteId: note.id || undefined
+  }
+}
+
+/**
  * 解析小红书链接（统一入口 - 三重容错机制）
  * 1. 第一次尝试极致了API（完整数据）
  * 2. 失败后降级到哼哼猫API（免费但数据不全）
@@ -434,7 +501,39 @@ async function parseXiaohongshu(url: string): Promise<{
     try {
       console.log('[快捷保存] 🆘 降级使用哼哼猫API...')
       const result = await parseXiaohongshuWithHenghengmao(url)
-      console.log('[快捷保存] ✅ 哼哼猫API成功！数据不全，需手动填写')
+      console.log('[快捷保存] ✅ 哼哼猫API成功！尝试用搜索接口补充统计数据...')
+
+      // 哼哼猫没有互动数据，用搜索接口补充
+      // 短链（xhslink.com）无法从URL提取noteId，传空字符串让搜索取第一条结果
+      const noteIdMatch = url.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
+      const noteId = noteIdMatch ? noteIdMatch[1] : ''
+      if (result.title && result.title !== '小红书笔记') {
+        try {
+          const stats = await fetchStatsViaSearch(noteId, result.title)
+          if (stats.authorName || stats.likedCount > 0) {
+            console.log('[快捷保存] 📊 搜索补充成功 - 作者:', stats.authorName, '点赞:', stats.likedCount)
+
+            // 短链场景：搜索拿到了 noteId，再尝试用 302.ai 获取完整数据（含图片顺序、完整正文）
+            if (!noteId && stats.foundNoteId && API_302AI_KEY) {
+              try {
+                console.log('[快捷保存] 🔄 用搜索到的noteId重新调302.ai获取完整数据:', stats.foundNoteId)
+                const fullResult = await parseXiaohongshuWithJizhile(
+                  `https://www.xiaohongshu.com/explore/${stats.foundNoteId}`
+                )
+                console.log('[快捷保存] ✅ 通过搜索noteId成功获取302.ai完整数据')
+                return { ...fullResult, apiUsed: 'jizhile', apiError: `短链展开失败降级: ${errorMsg1}` }
+              } catch (retryErr: any) {
+                console.warn('[快捷保存] 重试302.ai失败，使用哼哼猫+搜索数据:', retryErr?.message)
+              }
+            }
+
+            return { ...result, ...stats, apiUsed: 'henghengmao', apiError: `极致了失败: ${errorMsg1}` }
+          }
+        } catch (statsErr: any) {
+          console.warn('[快捷保存] 统计数据补充失败（非致命）:', statsErr?.message)
+        }
+      }
+
       return {
         ...result,
         apiUsed: 'henghengmao',
@@ -724,7 +823,7 @@ async function saveToFeishu(
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
 
-  const appAccessToken = await getAppAccessToken()
+  const appAccessToken = await getUserAccessToken()
 
   // 构建记录字段
   // 列顺序：笔记链接、作者昵称、封面、图片2、后续图片、标题、正文、话题标签、点赞数、收藏数、评论数、发布时间、备注、复刻情况
@@ -1055,7 +1154,7 @@ async function processImagesAndUpdate(
   }
 
   // 3. 更新飞书记录（添加图片）
-  const appAccessToken = await getAppAccessToken()
+  const appAccessToken = await getUserAccessToken()
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
     {
