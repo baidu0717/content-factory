@@ -958,11 +958,63 @@ async function saveToFeishu(
  * POST /api/xiaohongshu/quick-save
  * iOS快捷指令专用API - 一键保存小红书笔记到飞书（含图片）
  */
+// 状态机清理：正确追踪 JSON 字符串边界，转义所有控制字符
+// 比正则方案可靠：能正确处理 remark 等多行字段里的任意控制字符
+function sanitizeJsonControlChars(raw: string): string {
+  let result = ''
+  let inString = false
+  let escaped = false
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i]
+    const code = raw.charCodeAt(i)
+
+    if (escaped) {
+      result += char
+      escaped = false
+      continue
+    }
+
+    if (char === '\\' && inString) {
+      result += char
+      escaped = true
+      continue
+    }
+
+    if (char === '"') {
+      inString = !inString
+      result += char
+      continue
+    }
+
+    if (inString && (code <= 0x1F || code === 0x7F)) {
+      switch (char) {
+        case '\t': result += '\\t'; break
+        case '\n': result += '\\n'; break
+        case '\r': result += '\\r'; break
+        default:   result += `\\u${code.toString(16).padStart(4, '0')}`; break
+      }
+      continue
+    }
+
+    result += char
+  }
+
+  return result
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    const body = await request.json()
+    const rawBody = await request.text()
+    let body: any
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      // iOS 快捷指令有时会在字符串值内嵌入原始控制字符（如 URL 或 remark 末尾的换行等）
+      body = JSON.parse(sanitizeJsonControlChars(rawBody))
+    }
     const { url, appToken, tableId, async: isAsync, remark } = body  // 新增：remark
 
     console.log('[快捷保存] 收到请求:', { url, appToken, tableId, async: isAsync, remark })
