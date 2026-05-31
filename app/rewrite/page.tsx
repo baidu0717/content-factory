@@ -475,9 +475,36 @@ function RewritePageContent() {
 
 现在轮到你创作：`)
 
-  const [contentPrompt, setContentPrompt] = useState(`你是一个专业的内容创作者，擅长将内容改写为全新的、高质量的原创文章，同时保持核心观点和价值。
+  const [contentPrompt, setContentPrompt] = useState(`你是一个小红书内容改写助手，服务于一家欧洲定制小团旅行社（4-6人精品小团，全程商务车，华人司导随行）。
 
-请将以下小红书正文改写为全新的内容，保持核心观点但使用完全不同的表达方式、案例和结构。直接输出改写后的完整正文，不要有任何策略说明或解释，只输出正文内容本身。`)
+**改写方式：**
+保持原文的段落结构和情绪走向，逐段改写内容。不照抄原句。改写优先级如下：
+1. 素材库中有对应内容 → 用库中内容替换原文对应场景
+2. 素材库中没有对应内容 → 由 AI 生成语义相近但表达不同的替代内容
+3. 替换或填充后，润色衔接，确保上下文自然流畅
+
+**业务替换规则（逐条执行）：**
+1. 「导游」「领队」→「司导」
+2. 「顾问」「客服」→「定制师」
+3. 路书App、行程手册导航 → 删除（司导随行，客人不需要自己导航）
+4. 城市间坐火车 → 巴黎↔日内瓦/苏黎世的TGV段保留；其余城市间转移改为「商务车，不用操心」
+5. 遇到问题找现场导游/顾问解决 → 改为「联系定制师，即使时差也第一时间响应」
+6. 语言不通的焦虑 → 原文中有提到才改为「华人司导全程，语言完全不是问题」；原文没有提到，不要主动加入
+7. 不论原文是否有价格，改写后必须包含一段完整的价格说明，从素材库「费用说明」分类中选取对应受众的句式，用自然的语句呈现，X和Y是字面占位字母不填数字，不能单独一行只丢出占位符
+8. 景点门票自己预订/排队 → 改为「定制师提前订好，到门口直接进」
+9. 禁止使用破折号（——），用句号或逗号代替
+
+**填充内容的写法要求：**
+- 场景描写要具体：写出具体的行为、反应、细节，不用「很贴心」「非常好吃」「体验极佳」等空洞形容词
+- 每个细节写进去前先问：这说明了什么？回答不了就删
+- 具体场景和感受评价要同时有：场景给读者画面，感受帮读者定性，缺一个都不完整
+- 句式不能一直重复同一结构，要混入：意外反转、行为细节、情绪变化等不同角度
+
+**输出要求：**
+- 字数：850-900个中文字符（含标点）
+- 直接输出改写正文，不加任何说明`)
+
+  const [audienceType, setAudienceType] = useState('')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
   const [imageStyle, setImageStyle] = useState('original')
 
@@ -534,6 +561,10 @@ function RewritePageContent() {
 
   // ===== 一键改写全部（标题+正文） =====
   const handleRewriteAll = useCallback(async () => {
+    if (!audienceType) {
+      alert('请先选择笔记受众')
+      return
+    }
     console.log('[一键改写] 开始改写标题和正文')
     console.log('[一键改写] 当前标题:', editableTitle?.substring(0, 50))
     console.log('[一键改写] 当前正文长度:', editableContent?.length)
@@ -548,7 +579,8 @@ function RewritePageContent() {
           title: editableTitle,
           content: editableContent,
           titlePrompt: titlePrompt,
-          contentPrompt: contentPrompt
+          contentPrompt: contentPrompt,
+          audienceType: audienceType
         })
       })
       const result = await response.json()
@@ -577,10 +609,14 @@ function RewritePageContent() {
     } finally {
       setIsRewritingAll(false)
     }
-  }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, createHistoryVersion])
+  }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, audienceType, createHistoryVersion])
 
   // ===== 一键改写正文 =====
   const handleRewriteContent = useCallback(async () => {
+    if (!audienceType) {
+      alert('请先选择笔记受众')
+      return
+    }
     console.log('[改写正文] 开始改写正文')
     console.log('[改写正文] 当前正文长度:', editableContent?.length)
 
@@ -592,7 +628,8 @@ function RewritePageContent() {
         body: JSON.stringify({
           title: editableTitle,
           content: editableContent,
-          contentPrompt: contentPrompt  // 只传正文提示词
+          contentPrompt: contentPrompt,
+          audienceType: audienceType
         })
       })
       const result = await response.json()
@@ -615,7 +652,7 @@ function RewritePageContent() {
     } finally {
       setIsRewritingContent(false)
     }
-  }, [editableTitle, editableContent, editableTags, contentPrompt, createHistoryVersion])
+  }, [editableTitle, editableContent, editableTags, contentPrompt, audienceType, createHistoryVersion])
 
   // ===== 解析小红书链接 =====
   const handleParse = async () => {
@@ -696,7 +733,8 @@ function RewritePageContent() {
           title: editableTitle,
           content: editableContent,
           titlePrompt: titlePrompt,
-          contentPrompt: contentPrompt
+          contentPrompt: contentPrompt,
+          audienceType: audienceType
         })
       })
 
@@ -967,6 +1005,24 @@ function RewritePageContent() {
                       rows={3}
                       disabled={pageState === 'processing'}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      笔记受众 <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={audienceType}
+                      onChange={(e) => setAudienceType(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      disabled={pageState === 'processing'}
+                    >
+                      <option value="">请选择受众（必填）</option>
+                      <option value="带妈妈">带妈妈</option>
+                      <option value="带父母">带父母</option>
+                      <option value="带孩子">带孩子</option>
+                      <option value="情侣·夫妻">情侣·夫妻</option>
+                    </select>
                   </div>
 
                   <div>

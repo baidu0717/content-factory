@@ -18,3 +18,22 @@ download-images.js
 fetch-record-*.js
 create-publish-table.js
 .vercel
+
+# 包含真实 API key 的参考文件
+vercel-env.txt
+
+# content-library 内部配置与大文件（不入 git）
+content-library/.obsidian/
+content-library/.claude/
+content-library/.claudian/
+content-library/ins博主库/
+
+# 竞品笔记库（含大量图片）
+content-library/内容生产/素材库/亚宁写的笔记库/
+content-library/内容生产/素材库/同行小团爆款笔记库/
+content-library/内容生产/素材库/定制和小团爆款笔记库/
+content-library/内容生产/素材库/定制自由行爆款笔记库/
+content-library/内容生产/素材库/真实客人反馈笔记库/
+content-library/内容生产/素材库/图片库/
+content-library/内容生产/素材库/人群痛点卖点库/
+content-library/内容生产/人工测试/

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { loadLibraryContent, type AudienceType } from '@/lib/library-loader'
 
 async function callOpenRouter(apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number): Promise<string> {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     const REWRITE_MODEL = (process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6').trim()
 
 
-    const { title, content, titlePrompt, contentPrompt } = await request.json()
+    const { title, content, titlePrompt, contentPrompt, audienceType } = await request.json()
 
     if (!title && !content) {
       return NextResponse.json(
@@ -97,7 +98,12 @@ export async function POST(request: NextRequest) {
    - 结尾：行动号召（[拿走R] [比心R] [冲鸭R]）
 4. 表情前后不需要空格，直接紧跟文字
 `
-        const fullContentPrompt = `${contentPrompt}\n\n${emojiGuide}\n\n原正文：${content}\n\n请输出改写后的正文（记得添加小红书表情）：`
+        const libraryContent = audienceType
+          ? loadLibraryContent(audienceType as AudienceType)
+          : ''
+        const librarySection = libraryContent ? `\n\n---\n\n${libraryContent}\n\n---` : ''
+        console.log('[内容改写] 素材库注入长度:', libraryContent.length, '受众:', audienceType)
+        const fullContentPrompt = `${contentPrompt}${librarySection}\n\n${emojiGuide}\n\n原正文：${content}\n\n请输出改写后的正文（记得添加小红书表情）：`
         newContent = await callOpenRouter(OPENROUTER_API_KEY, REWRITE_MODEL, fullContentPrompt, 8192, 0.9) || content
         console.log('[内容改写] 新正文长度:', newContent.length)
       } catch (error) {

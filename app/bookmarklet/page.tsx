@@ -5,13 +5,22 @@ import { useState } from 'react'
 
 export default function BookmarkletPage() {
   const [copied, setCopied] = useState(false)
+  const [copiedIns, setCopiedIns] = useState(false)
 
   const bookmarkletCode = `javascript:(function(){const cells=document.querySelectorAll('[data-testid="cell-container"][class*="selected"]');if(cells.length===0){alert('请先在飞书表格中选中一行');return}const row=cells[0].closest('[data-testid="row"]');if(!row){alert('无法找到选中的行');return}let title=prompt('请输入标题:');let content=prompt('请输入正文:');let tags=prompt('请输入标签（可选）:')||'';if(!title||!content){alert('标题和正文不能为空');return}const params=new URLSearchParams({title,content,tags});window.open('http://localhost:3000/rewrite?'+params.toString(),'_blank')})();`
+
+  const insBookmarkletCode = `javascript:(function(){const cur=location.href;let post='',profile='';if(/instagram\\.com\\/(p|reel|tv)\\//.test(cur)){post=cur;const tm=document.title.match(/^@?([A-Za-z0-9_.]{2,30})\\s+on\\s+Instagram/i);if(tm){profile='https://www.instagram.com/'+tm[1]+'/';}if(!profile){const skip=/^\\/(p|reel|tv|stories|explore|accounts|reels|direct|liked_by|comments)\\//;const hdr=document.querySelector('article header');if(hdr){for(const a of hdr.querySelectorAll('a[href]')){const h=a.getAttribute('href');if(h&&/^\\/[\\w.]{2,30}\\/$/.test(h)&&!skip.test(h)){profile='https://www.instagram.com'+h;break;}}}}if(!profile){const skip=/^\\/(p|reel|tv|stories|explore|accounts|reels|direct|liked_by|comments)\\//;const zones=[document.querySelector('[role="dialog"]'),document.querySelector('article'),document.querySelector('main'),document.body];for(const z of zones){if(!z)continue;for(const a of z.querySelectorAll('a[href]')){const h=a.getAttribute('href');if(h&&/^\\/[\\w.]{2,30}\\/$/.test(h)&&!skip.test(h)){profile='https://www.instagram.com'+h;break;}}if(profile)break;}}}else{profile=cur;}window.open('http://localhost:3000/ins-blogger?post='+encodeURIComponent(post)+'&profile='+encodeURIComponent(profile),'_blank','width=500,height=820,left=200,top=50');})();`
 
   const handleCopy = () => {
     navigator.clipboard.writeText(bookmarkletCode)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleCopyIns = () => {
+    navigator.clipboard.writeText(insBookmarkletCode)
+    setCopiedIns(true)
+    setTimeout(() => setCopiedIns(false), 2000)
   }
 
   return (
@@ -193,6 +202,48 @@ export default function BookmarkletPage() {
             </div>
           </div>
         </div>
+
+        {/* ins 博主录入工具 */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 mt-8">
+          <div className="flex items-center space-x-3 mb-6">
+            <span className="text-3xl">📸</span>
+            <h2 className="text-2xl font-bold text-gray-900">ins 博主录入</h2>
+          </div>
+
+          <p className="text-sm text-gray-600 mb-6">
+            装好后，书签栏会出现一个「录入博主」按钮。在 ins 博主页面点一下，自动弹出录入表单。
+          </p>
+
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">第一步：复制这段代码</span>
+                <button
+                  onClick={handleCopyIns}
+                  className="px-4 py-1.5 bg-pink-500 hover:bg-pink-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center space-x-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedIns ? '✓ 已复制' : '复制'}</span>
+                </button>
+              </div>
+              <code className="text-xs text-gray-500 break-all block leading-relaxed">
+                {insBookmarkletCode}
+              </code>
+            </div>
+
+            <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800 space-y-1.5">
+              <p className="font-medium">第二步：添加到书签栏</p>
+              <p>右键点击浏览器书签栏空白处 → <strong>添加书签</strong></p>
+              <p>名称填 <strong>录入博主</strong>，网址粘贴刚才复制的代码 → 保存</p>
+            </div>
+
+            <div className="bg-green-50 rounded-xl p-4 text-sm text-green-800">
+              <p className="font-medium mb-1">使用</p>
+              <p>在 ins 博主主页点书签栏的「录入博主」→ 填表单 → 保存</p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   )

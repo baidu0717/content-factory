@@ -175,8 +175,8 @@ async function fetchNoteDetail(noteUrl: string): Promise<any> {
  * 从正文中提取话题标签
  */
 function extractTagsFromContent(text: string): { content: string; tags: string[] } {
-  // 匹配 #话题 或 #话题# 格式
-  const tagRegex = /#([^#\s]+)#?/g
+  // 兼容 #标签[话题]# 和 #标签 两种格式
+  const tagRegex = /#([^#\s\[]+)(?:\[话题\])?#?/g
   const tags: string[] = []
   const matches = text.matchAll(tagRegex)
 
@@ -187,7 +187,6 @@ function extractTagsFromContent(text: string): { content: string; tags: string[]
     }
   }
 
-  // 从正文中移除话题标签
   const content = text.replace(tagRegex, '').trim()
 
   return { content, tags }

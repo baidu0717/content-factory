@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
-// 固定使用生产域名，避免 Vercel 不同环境域名不一致的问题
-const BASE_URL = 'https://content-factory-jade-nine.vercel.app'
+// 本地开发时使用 localhost，生产环境使用 Vercel 域名
+const IS_LOCAL = process.env.NODE_ENV === 'development'
+const BASE_URL = IS_LOCAL ? 'http://localhost:3000' : 'https://content-factory-jade-nine.vercel.app'
 
 /**
  * GET /api/feishu/auth/url
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
     const authUrl = new URL('https://open.feishu.cn/open-apis/authen/v1/authorize')
     authUrl.searchParams.set('app_id', FEISHU_APP_ID)
     authUrl.searchParams.set('redirect_uri', redirectUri)
-    authUrl.searchParams.set('scope', 'bitable:app') // 多维表格权限
+    authUrl.searchParams.set('scope', 'bitable:app drive:drive docx:document') // 多维表格+云盘+文档权限
     authUrl.searchParams.set('state', 'STATE') // 可选，用于防CSRF攻击
 
     console.log('[飞书授权] 生成授权链接:', authUrl.toString())

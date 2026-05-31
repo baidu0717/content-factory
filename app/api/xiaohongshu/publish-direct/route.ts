@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       api_key: MYAIBOT_API_KEY,
       type: 'normal',  // 图文笔记
       title: title.substring(0, 20),  // 标题限制20字符
-      content: content.substring(0, 1000),  // 内容限制1000字符
+      content: content.substring(0, 990),  // myaibot 限制1000字符，留10字符缓冲防止 emoji 计数差异
       images: images.slice(0, 18)  // 最多18张图片
     }
 

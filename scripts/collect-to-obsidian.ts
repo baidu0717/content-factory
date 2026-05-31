@@ -24,14 +24,38 @@ const FEISHU_API_URL = 'https://open.feishu.cn/open-apis'
 const FEISHU_APP_ID = process.env.FEISHU_APP_ID || ''
 const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || ''
 
-// Obsidian 素材库路径
-const NOTES_DIR = resolve(process.cwd(), 'content-library/01-内容生产/素材库/爆款笔记库')
+// Obsidian 素材库根路径
+const LIBRARY_ROOT = resolve(process.cwd(), 'content-library/内容生产/素材库')
 
-// 要收录的飞书表格（法意瑞、西班牙、意大利）
+// 小团/定制标签 → 笔记库文件夹映射
+const SERVICE_TYPE_MAP: Record<string, string> = {
+  '小团':     '定制和小团爆款笔记库',
+  '定制':     '定制和小团爆款笔记库',
+  '定制自由行': '定制自由行爆款笔记库',
+  '同行小团':  '同行小团爆款笔记库',
+  '亚宁写的':  '亚宁写的笔记库',
+  '真实客人反馈': '真实客人反馈笔记库',
+}
+const DEFAULT_LIBRARY = '定制和小团爆款笔记库'
+
+/** 根据 serviceTypes 决定存入哪个笔记库 */
+function resolveLibraryDir(serviceTypes: string[]): string {
+  for (const t of serviceTypes) {
+    if (SERVICE_TYPE_MAP[t]) {
+      return path.join(LIBRARY_ROOT, SERVICE_TYPE_MAP[t])
+    }
+  }
+  return path.join(LIBRARY_ROOT, DEFAULT_LIBRARY)
+}
+
+// 要收录的飞书表格（法意瑞、西班牙、意大利、聚光投放）
 const TABLES = [
   { name: '法意瑞', appToken: 'NNd8bJYazaBwHAsZ2z2cqsvmnqf', tableId: 'tblu1m2GPcFRNSPE' },
+  { name: '法意瑞（糖果）', appToken: 'NNd8bJYazaBwHAsZ2z2cqsvmnqf', tableId: 'tblf26FLVBvnORZ6' },
   { name: '西班牙', appToken: 'NNd8bJYazaBwHAsZ2z2cqsvmnqf', tableId: 'tbltUxC0qElUbibT' },
   { name: '意大利', appToken: 'NNd8bJYazaBwHAsZ2z2cqsvmnqf', tableId: 'tbl5WFtr4k8sQVJP' },
+  { name: '行程大师', appToken: 'NNd8bJYazaBwHAsZ2z2cqsvmnqf', tableId: 'tblYADBXNeunodK3' },
+  { name: '聚光投放', appToken: 'McFGbxqi6aSd0HsBCSlc5kI7nwc', tableId: 'tbltp6uHpdKRF68a' },
 ]
 
 // ─────────────────────────────────────────
@@ -134,6 +158,20 @@ async function markAsCollected(appToken: string, tableId: string, recordId: stri
 // 收录逻辑
 // ─────────────────────────────────────────
 
+/** 从飞书字段值中提取字符串（兼容字符串和对象格式） */
+function extractString(field: any): string {
+  if (!field) return ''
+  if (typeof field === 'string') return field
+  if (typeof field === 'number') return String(field)
+  if (Array.isArray(field)) {
+    return field.map((item: any) =>
+      typeof item === 'string' ? item : item.text ?? item.value ?? ''
+    ).join('')
+  }
+  if (typeof field === 'object') return field.text ?? field.value ?? ''
+  return String(field)
+}
+
 function sanitizeName(name: string): string {
   return name
     .replace(/[/\\:*?"<>|]/g, '_')
@@ -151,17 +189,35 @@ async function collectNote(
   const recordId = record.record_id
 
   // 读取字段
-  const title = fields['标题'] || '未知标题'
-  const content = fields['正文'] || ''
-  const tags = fields['话题标签'] || ''
-  const author = fields['作者昵称'] || ''
-  const publishTime = fields['发布时间'] || ''
-  const noteUrl = fields['笔记链接'] || ''
-  const likes = Number(fields['点赞数']) || 0
-  const collects = Number(fields['收藏数']) || 0
-  const comments = Number(fields['评论数']) || 0
-  const views = Number(fields['浏览数']) || 0
-  const remark = fields['备注'] || ''
+  const title = extractString(fields['标题']) || '未知标题'
+  const content = extractString(fields['正文'])
+  const tags = extractString(fields['话题标签'])
+  const author = extractString(fields['作者昵称'])
+  const publishTime = extractString(fields['发布时间'])
+  const noteUrl = extractString(fields['笔记链接'])
+  const likes = Number(extractString(fields['点赞数'])) || 0
+  const collects = Number(extractString(fields['收藏数'])) || 0
+  const comments = Number(extractString(fields['评论数'])) || 0
+  const views = Number(extractString(fields['浏览数'])) || 0
+  const remark = extractString(fields['备注'])
+
+  // 内容类型（多选字段：小团 / 定制）
+  const rawTypes = fields['内容类型']
+  const contentTypes: string[] = Array.isArray(rawTypes)
+    ? rawTypes.map((item: any) => (typeof item === 'string' ? item : item.value ?? item.text ?? '')).filter(Boolean)
+    : []
+
+  // 小团/定制（多选字段，4个标签）
+  const rawServiceType = fields['小团/定制']
+  const serviceTypes: string[] = Array.isArray(rawServiceType)
+    ? rawServiceType.map((item: any) => (typeof item === 'string' ? item : item.value ?? item.text ?? '')).filter(Boolean)
+    : []
+
+  // 账号属性（多选字段：个人号 / kos号，通常只标注 kos号）
+  const rawAccountType = fields['账号属性']
+  const accountTypes: string[] = Array.isArray(rawAccountType)
+    ? rawAccountType.map((item: any) => (typeof item === 'string' ? item : item.value ?? item.text ?? '')).filter(Boolean)
+    : []
 
   // 评论占比
   const total = likes + collects + comments
@@ -173,7 +229,8 @@ async function collectNote(
     ? String(publishTime).replace(/-/g, '').substring(0, 8)
     : new Date().toISOString().replace(/-/g, '').substring(0, 8)
   const folderName = `${dateStr}-${sanitizeName(title)}`
-  const folderPath = path.join(NOTES_DIR, folderName)
+  const libraryDir = resolveLibraryDir(serviceTypes)
+  const folderPath = path.join(libraryDir, folderName)
 
   // 跳过已存在
   if (fs.existsSync(folderPath)) {
@@ -240,12 +297,25 @@ async function collectNote(
     .map((t: string) => t.startsWith('#') ? t : `#${t}`)
     .join(' ')
 
+  // YAML frontmatter tags（供 Obsidian 标签面板识别）
+  const allTags = [
+    ...contentTypes,
+    ...serviceTypes,
+    ...accountTypes,
+  ]
+  const frontmatter = allTags.length > 0
+    ? `---\ntags:\n${allTags.map(t => `  - ${t}`).join('\n')}\n---\n\n`
+    : ''
+
   // ── 生成笔记.md ──
-  const noteContent = `## 元数据
+  const noteContent = `${frontmatter}## 元数据
 - 笔记链接：${noteUrl}
 - 作者：${author}
 - 发布时间：${publishTime}
 - 来源表格：${tableName}
+- 内容类型：${contentTypes.length > 0 ? contentTypes.join('、') : '未标注'}
+- 小团/定制：${serviceTypes.length > 0 ? serviceTypes.join('、') : '未标注'}
+- 账号属性：${accountTypes.length > 0 ? accountTypes.join('、') : '个人号'}
 - 采集时间：${new Date().toISOString().split('T')[0]}
 
 ## 互动数据
@@ -283,7 +353,7 @@ ${formattedTags}
 
 async function main() {
   console.log('🚀 批量收录笔记到 Obsidian 素材库')
-  console.log(`📁 路径：${NOTES_DIR}\n`)
+  console.log(`📁 根目录：${LIBRARY_ROOT}\n`)
 
   if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
     console.error('❌ 缺少 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请检查 .env.local')
