@@ -505,6 +505,7 @@ function RewritePageContent() {
 - 直接输出改写正文，不加任何说明`)
 
   const [audienceType, setAudienceType] = useState('')
+  const [travelGroup, setTravelGroup] = useState('')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
   const [imageStyle, setImageStyle] = useState('original')
 
@@ -580,7 +581,8 @@ function RewritePageContent() {
           content: editableContent,
           titlePrompt: titlePrompt,
           contentPrompt: contentPrompt,
-          audienceType: audienceType
+          audienceType: audienceType,
+          travelGroup: travelGroup
         })
       })
       const result = await response.json()
@@ -609,7 +611,7 @@ function RewritePageContent() {
     } finally {
       setIsRewritingAll(false)
     }
-  }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, audienceType, createHistoryVersion])
+  }, [editableTitle, editableContent, editableTags, titlePrompt, contentPrompt, audienceType, travelGroup, createHistoryVersion])
 
   // ===== 一键改写正文 =====
   const handleRewriteContent = useCallback(async () => {
@@ -629,7 +631,8 @@ function RewritePageContent() {
           title: editableTitle,
           content: editableContent,
           contentPrompt: contentPrompt,
-          audienceType: audienceType
+          audienceType: audienceType,
+          travelGroup: travelGroup
         })
       })
       const result = await response.json()
@@ -652,7 +655,7 @@ function RewritePageContent() {
     } finally {
       setIsRewritingContent(false)
     }
-  }, [editableTitle, editableContent, editableTags, contentPrompt, audienceType, createHistoryVersion])
+  }, [editableTitle, editableContent, editableTags, contentPrompt, audienceType, travelGroup, createHistoryVersion])
 
   // ===== 解析小红书链接 =====
   const handleParse = async () => {
@@ -734,7 +737,8 @@ function RewritePageContent() {
           content: editableContent,
           titlePrompt: titlePrompt,
           contentPrompt: contentPrompt,
-          audienceType: audienceType
+          audienceType: audienceType,
+          travelGroup: travelGroup
         })
       })
 
@@ -1021,8 +1025,23 @@ function RewritePageContent() {
                       <option value="带妈妈">带妈妈</option>
                       <option value="带父母">带父母</option>
                       <option value="带孩子">带孩子</option>
+                      <option value="三代同游·带父母带孩子">三代同游·带父母带孩子</option>
                       <option value="情侣·夫妻">情侣·夫妻</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      出行人员 <span className="text-gray-400 font-normal">（选填）</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={travelGroup}
+                      onChange={(e) => setTravelGroup(e.target.value)}
+                      placeholder="例：妈妈+女儿、夫妻+爸妈+1个孩子"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      disabled={pageState === 'processing'}
+                    />
                   </div>
 
                   <div>

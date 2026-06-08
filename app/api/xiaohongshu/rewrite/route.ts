@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     const REWRITE_MODEL = (process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6').trim()
 
 
-    const { title, content, titlePrompt, contentPrompt, audienceType } = await request.json()
+    const { title, content, titlePrompt, contentPrompt, audienceType, travelGroup } = await request.json()
 
     if (!title && !content) {
       return NextResponse.json(
@@ -103,7 +103,8 @@ export async function POST(request: NextRequest) {
           : ''
         const librarySection = libraryContent ? `\n\n---\n\n${libraryContent}\n\n---` : ''
         console.log('[内容改写] 素材库注入长度:', libraryContent.length, '受众:', audienceType)
-        const fullContentPrompt = `${contentPrompt}${librarySection}\n\n${emojiGuide}\n\n原正文：${content}\n\n请输出改写后的正文（记得添加小红书表情）：`
+        const groupSection = travelGroup ? `\n\n【出行人员】${travelGroup}（请在改写中体现这个人物组合，调整人称和人数描述）` : ''
+        const fullContentPrompt = `${contentPrompt}${librarySection}${groupSection}\n\n${emojiGuide}\n\n原正文：${content}\n\n请输出改写后的正文（记得添加小红书表情）：`
         newContent = await callOpenRouter(OPENROUTER_API_KEY, REWRITE_MODEL, fullContentPrompt, 8192, 0.9) || content
         console.log('[内容改写] 新正文长度:', newContent.length)
       } catch (error) {
