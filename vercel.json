@@ -2,7 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "regions": ["sin1"],
+  "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_APP_URL": "https://$VERCEL_URL"
   },
