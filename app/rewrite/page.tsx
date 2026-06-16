@@ -505,7 +505,7 @@ function RewritePageContent() {
 - 字数：850-900个中文字符（含标点）
 - 直接输出改写正文，不加任何说明`)
 
-  const [selectedModel, setSelectedModel] = useState('anthropic/claude-sonnet-4-5')
+  const [selectedModel, setSelectedModel] = useState('anthropic/claude-sonnet-4.6')
   const [audienceType, setAudienceType] = useState('')
   const [travelGroup, setTravelGroup] = useState('')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
@@ -1022,9 +1022,9 @@ function RewritePageContent() {
                     </label>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setSelectedModel('anthropic/claude-sonnet-4-5')}
+                        onClick={() => setSelectedModel('anthropic/claude-sonnet-4.6')}
                         className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                          selectedModel === 'anthropic/claude-sonnet-4-5'
+                          selectedModel === 'anthropic/claude-sonnet-4.6'
                             ? 'bg-purple-100 border-purple-400 text-purple-800 font-medium'
                             : 'bg-white border-gray-300 text-gray-600 hover:border-purple-300'
                         }`}
