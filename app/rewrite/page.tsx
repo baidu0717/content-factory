@@ -1033,9 +1033,9 @@ function RewritePageContent() {
                         <span className="block text-xs font-normal opacity-70">快速 · 省额度</span>
                       </button>
                       <button
-                        onClick={() => setSelectedModel('anthropic/claude-opus-4-5')}
+                        onClick={() => setSelectedModel('anthropic/claude-opus-4.6')}
                         className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                          selectedModel === 'anthropic/claude-opus-4-5'
+                          selectedModel === 'anthropic/claude-opus-4.6'
                             ? 'bg-amber-100 border-amber-400 text-amber-800 font-medium'
                             : 'bg-white border-gray-300 text-gray-600 hover:border-amber-300'
                         }`}
