@@ -1020,7 +1020,7 @@ function RewritePageContent() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       AI 模型
                     </label>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => setSelectedModel('deepseek-v4-pro')}
                         className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
@@ -1029,8 +1029,8 @@ function RewritePageContent() {
                             : 'bg-white border-gray-300 text-gray-600 hover:border-blue-300'
                         }`}
                       >
-                        V4 Pro
-                        <span className="block text-xs font-normal opacity-70">旗舰 · 效果最好</span>
+                        DS V4 Pro
+                        <span className="block text-xs font-normal opacity-70">旗舰 · 中文强</span>
                       </button>
                       <button
                         onClick={() => setSelectedModel('deepseek-v4-flash')}
@@ -1040,8 +1040,30 @@ function RewritePageContent() {
                             : 'bg-white border-gray-300 text-gray-600 hover:border-cyan-300'
                         }`}
                       >
-                        V4 Flash
+                        DS V4 Flash
                         <span className="block text-xs font-normal opacity-70">快速 · 省费用</span>
+                      </button>
+                      <button
+                        onClick={() => setSelectedModel('anthropic/claude-sonnet-4.6')}
+                        className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                          selectedModel === 'anthropic/claude-sonnet-4.6'
+                            ? 'bg-purple-100 border-purple-400 text-purple-800 font-medium'
+                            : 'bg-white border-gray-300 text-gray-600 hover:border-purple-300'
+                        }`}
+                      >
+                        Sonnet 4.6
+                        <span className="block text-xs font-normal opacity-70">均衡 · 快</span>
+                      </button>
+                      <button
+                        onClick={() => setSelectedModel('anthropic/claude-opus-4.6')}
+                        className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                          selectedModel === 'anthropic/claude-opus-4.6'
+                            ? 'bg-amber-100 border-amber-400 text-amber-800 font-medium'
+                            : 'bg-white border-gray-300 text-gray-600 hover:border-amber-300'
+                        }`}
+                      >
+                        Opus 4.6
+                        <span className="block text-xs font-normal opacity-70">最强 · 贵</span>
                       </button>
                     </div>
                   </div>
