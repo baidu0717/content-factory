@@ -32,7 +32,8 @@ export async function POST(request: NextRequest) {
     const REWRITE_MODEL = (process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6').trim()
 
 
-    const { title, content, titlePrompt, contentPrompt, audienceType, travelGroup } = await request.json()
+    const { title, content, titlePrompt, contentPrompt, audienceType, travelGroup, model } = await request.json()
+    const selectedModel = (model || REWRITE_MODEL).trim()
 
     if (!title && !content) {
       return NextResponse.json(
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
 - 示例：这个宝藏好物太好用了[笑哭R] | 3个超小众景点[火R]人少景美
 `
         const fullPrompt = `${titlePrompt}\n\n${titleEmojiGuide}\n\n原标题：${title}\n\n新标题：`
-        newTitle = await callOpenRouter(OPENROUTER_API_KEY, REWRITE_MODEL, fullPrompt, 200, 1.0) || title
+        newTitle = await callOpenRouter(OPENROUTER_API_KEY, selectedModel, fullPrompt, 200, 1.0) || title
         console.log('[内容改写] 新标题:', newTitle)
       } catch (error) {
         console.error('[内容改写] 标题改写失败:', error)
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
         console.log('[内容改写] 素材库注入长度:', libraryContent.length, '受众:', audienceType)
         const groupSection = travelGroup ? `\n\n【出行人员】${travelGroup}（请在改写中体现这个人物组合，调整人称和人数描述）` : ''
         const fullContentPrompt = `${contentPrompt}${librarySection}${groupSection}\n\n${emojiGuide}\n\n原正文：${content}\n\n请输出改写后的正文（记得添加小红书表情）：`
-        newContent = await callOpenRouter(OPENROUTER_API_KEY, REWRITE_MODEL, fullContentPrompt, 8192, 0.9) || content
+        newContent = await callOpenRouter(OPENROUTER_API_KEY, selectedModel, fullContentPrompt, 8192, 0.9) || content
         console.log('[内容改写] 新正文长度:', newContent.length)
       } catch (error) {
         console.error('[内容改写] 正文改写失败:', error)

@@ -505,6 +505,7 @@ function RewritePageContent() {
 - 字数：850-900个中文字符（含标点）
 - 直接输出改写正文，不加任何说明`)
 
+  const [selectedModel, setSelectedModel] = useState('anthropic/claude-sonnet-4-5')
   const [audienceType, setAudienceType] = useState('')
   const [travelGroup, setTravelGroup] = useState('')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
@@ -538,8 +539,8 @@ function RewritePageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editableTitle,
-          // 不传 content 和 contentPrompt，只改写标题
-          titlePrompt: titlePrompt
+          titlePrompt: titlePrompt,
+          model: selectedModel
         })
       })
       const result = await response.json()
@@ -583,7 +584,8 @@ function RewritePageContent() {
           titlePrompt: titlePrompt,
           contentPrompt: contentPrompt,
           audienceType: audienceType,
-          travelGroup: travelGroup
+          travelGroup: travelGroup,
+          model: selectedModel
         })
       })
       const result = await response.json()
@@ -633,7 +635,8 @@ function RewritePageContent() {
           content: editableContent,
           contentPrompt: contentPrompt,
           audienceType: audienceType,
-          travelGroup: travelGroup
+          travelGroup: travelGroup,
+          model: selectedModel
         })
       })
       const result = await response.json()
@@ -739,7 +742,8 @@ function RewritePageContent() {
           titlePrompt: titlePrompt,
           contentPrompt: contentPrompt,
           audienceType: audienceType,
-          travelGroup: travelGroup
+          travelGroup: travelGroup,
+          model: selectedModel
         })
       })
 
@@ -1010,6 +1014,36 @@ function RewritePageContent() {
                       rows={3}
                       disabled={pageState === 'processing'}
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      AI 模型
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedModel('anthropic/claude-sonnet-4-5')}
+                        className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                          selectedModel === 'anthropic/claude-sonnet-4-5'
+                            ? 'bg-purple-100 border-purple-400 text-purple-800 font-medium'
+                            : 'bg-white border-gray-300 text-gray-600 hover:border-purple-300'
+                        }`}
+                      >
+                        Sonnet 4.6
+                        <span className="block text-xs font-normal opacity-70">快速 · 省额度</span>
+                      </button>
+                      <button
+                        onClick={() => setSelectedModel('anthropic/claude-opus-4-5')}
+                        className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                          selectedModel === 'anthropic/claude-opus-4-5'
+                            ? 'bg-amber-100 border-amber-400 text-amber-800 font-medium'
+                            : 'bg-white border-gray-300 text-gray-600 hover:border-amber-300'
+                        }`}
+                      >
+                        Opus 4.6
+                        <span className="block text-xs font-normal opacity-70">更强 · 消耗多</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div>
