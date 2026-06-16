@@ -505,7 +505,7 @@ function RewritePageContent() {
 - 字数：850-900个中文字符（含标点）
 - 直接输出改写正文，不加任何说明`)
 
-  const [selectedModel, setSelectedModel] = useState('deepseek/deepseek-chat')
+  const [selectedModel, setSelectedModel] = useState('deepseek-v4-pro')
   const [audienceType, setAudienceType] = useState('')
   const [travelGroup, setTravelGroup] = useState('')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
@@ -1022,26 +1022,26 @@ function RewritePageContent() {
                     </label>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setSelectedModel('deepseek/deepseek-chat')}
+                        onClick={() => setSelectedModel('deepseek-v4-pro')}
                         className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                          selectedModel === 'deepseek/deepseek-chat'
+                          selectedModel === 'deepseek-v4-pro'
                             ? 'bg-blue-100 border-blue-400 text-blue-800 font-medium'
                             : 'bg-white border-gray-300 text-gray-600 hover:border-blue-300'
                         }`}
                       >
-                        Deepseek
-                        <span className="block text-xs font-normal opacity-70">中文强 · 省额度</span>
+                        V4 Pro
+                        <span className="block text-xs font-normal opacity-70">旗舰 · 效果最好</span>
                       </button>
                       <button
-                        onClick={() => setSelectedModel('anthropic/claude-sonnet-4.6')}
+                        onClick={() => setSelectedModel('deepseek-v4-flash')}
                         className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                          selectedModel === 'anthropic/claude-sonnet-4.6'
-                            ? 'bg-purple-100 border-purple-400 text-purple-800 font-medium'
-                            : 'bg-white border-gray-300 text-gray-600 hover:border-purple-300'
+                          selectedModel === 'deepseek-v4-flash'
+                            ? 'bg-cyan-100 border-cyan-400 text-cyan-800 font-medium'
+                            : 'bg-white border-gray-300 text-gray-600 hover:border-cyan-300'
                         }`}
                       >
-                        Sonnet 4.6
-                        <span className="block text-xs font-normal opacity-70">暂时不可用</span>
+                        V4 Flash
+                        <span className="block text-xs font-normal opacity-70">快速 · 省费用</span>
                       </button>
                     </div>
                   </div>

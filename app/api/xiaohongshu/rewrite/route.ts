@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadLibraryContent, type AudienceType } from '@/lib/library-loader'
 
-async function callOpenRouter(apiKey: string, model: string, prompt: string, maxTokens: number, temperature: number): Promise<string> {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+async function callLLM(model: string, prompt: string, maxTokens: number, temperature: number): Promise<string> {
+  const isDeepSeek = model.startsWith('deepseek-')
+  const apiKey = isDeepSeek
+    ? (process.env.DEEPSEEK_API_KEY || '').trim()
+    : (process.env.OPENROUTER_API_KEY || '').trim()
+  const baseUrl = isDeepSeek
+    ? 'https://api.deepseek.com/v1/chat/completions'
+    : 'https://openrouter.ai/api/v1/chat/completions'
+
+  const response = await fetch(baseUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -28,9 +36,7 @@ async function callOpenRouter(apiKey: string, model: string, prompt: string, max
 
 export async function POST(request: NextRequest) {
   try {
-    const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim()
-    const REWRITE_MODEL = (process.env.REWRITE_MODEL || 'anthropic/claude-sonnet-4.6').trim()
-
+    const REWRITE_MODEL = (process.env.REWRITE_MODEL || 'deepseek-v4-pro').trim()
 
     const { title, content, titlePrompt, contentPrompt, audienceType, travelGroup, model } = await request.json()
     const selectedModel = (model || REWRITE_MODEL).trim()
@@ -42,15 +48,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!OPENROUTER_API_KEY) {
-      console.error('[内容改写] 错误: OPENROUTER_API_KEY 未配置')
-      return NextResponse.json(
-        { success: false, error: 'API配置错误，请联系管理员' },
-        { status: 500 }
-      )
-    }
-
-    console.log('[内容改写] 开始改写，使用模型:', REWRITE_MODEL)
+    console.log('[内容改写] 开始改写，使用模型:', selectedModel)
 
     let newTitle = title
     let newContent = content
@@ -67,11 +65,10 @@ export async function POST(request: NextRequest) {
 - 示例：这个宝藏好物太好用了[笑哭R] | 3个超小众景点[火R]人少景美
 `
         const fullPrompt = `${titlePrompt}\n\n${titleEmojiGuide}\n\n原标题：${title}\n\n新标题：`
-        newTitle = await callOpenRouter(OPENROUTER_API_KEY, selectedModel, fullPrompt, 200, 1.0) || title
+        newTitle = await callLLM(selectedModel, fullPrompt, 200, 1.0) || title
         console.log('[内容改写] 新标题:', newTitle)
       } catch (error) {
         console.error('[内容改写] 标题改写失败:', error)
-        // 标题失败不影响正文
       }
     }
 
@@ -106,7 +103,7 @@ export async function POST(request: NextRequest) {
         console.log('[内容改写] 素材库注入长度:', libraryContent.length, '受众:', audienceType)
         const groupSection = travelGroup ? `\n\n【出行人员】${travelGroup}（请在改写中体现这个人物组合，调整人称和人数描述）` : ''
         const fullContentPrompt = `${contentPrompt}${librarySection}${groupSection}\n\n${emojiGuide}\n\n原正文：${content}\n\n请输出改写后的正文（记得添加小红书表情）：`
-        newContent = await callOpenRouter(OPENROUTER_API_KEY, selectedModel, fullContentPrompt, 8192, 0.9) || content
+        newContent = await callLLM(selectedModel, fullContentPrompt, 8192, 0.9) || content
         console.log('[内容改写] 新正文长度:', newContent.length)
       } catch (error) {
         console.error('[内容改写] 正文改写失败:', error)
