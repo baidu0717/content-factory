@@ -505,7 +505,7 @@ function RewritePageContent() {
 - 字数：850-900个中文字符（含标点）
 - 直接输出改写正文，不加任何说明`)
 
-  const [selectedModel, setSelectedModel] = useState('anthropic/claude-sonnet-4.6')
+  const [selectedModel, setSelectedModel] = useState('deepseek/deepseek-chat')
   const [audienceType, setAudienceType] = useState('')
   const [travelGroup, setTravelGroup] = useState('')
   const [imagePrompt, setImagePrompt] = useState('基于原图的主题和构图，生成一张风格相似但内容不同的新图片')
@@ -1022,6 +1022,17 @@ function RewritePageContent() {
                     </label>
                     <div className="flex gap-2">
                       <button
+                        onClick={() => setSelectedModel('deepseek/deepseek-chat')}
+                        className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                          selectedModel === 'deepseek/deepseek-chat'
+                            ? 'bg-blue-100 border-blue-400 text-blue-800 font-medium'
+                            : 'bg-white border-gray-300 text-gray-600 hover:border-blue-300'
+                        }`}
+                      >
+                        Deepseek
+                        <span className="block text-xs font-normal opacity-70">中文强 · 省额度</span>
+                      </button>
+                      <button
                         onClick={() => setSelectedModel('anthropic/claude-sonnet-4.6')}
                         className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
                           selectedModel === 'anthropic/claude-sonnet-4.6'
@@ -1030,18 +1041,7 @@ function RewritePageContent() {
                         }`}
                       >
                         Sonnet 4.6
-                        <span className="block text-xs font-normal opacity-70">快速 · 省额度</span>
-                      </button>
-                      <button
-                        onClick={() => setSelectedModel('anthropic/claude-opus-4.6')}
-                        className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                          selectedModel === 'anthropic/claude-opus-4.6'
-                            ? 'bg-amber-100 border-amber-400 text-amber-800 font-medium'
-                            : 'bg-white border-gray-300 text-gray-600 hover:border-amber-300'
-                        }`}
-                      >
-                        Opus 4.6
-                        <span className="block text-xs font-normal opacity-70">更强 · 消耗多</span>
+                        <span className="block text-xs font-normal opacity-70">暂时不可用</span>
                       </button>
                     </div>
                   </div>
