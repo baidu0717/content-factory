@@ -390,36 +390,6 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
- * 把 API 原始报错压成一句人话，用于快捷指令弹的通知
- */
-function briefApiError(apiError?: string): string {
-  const raw = apiError || ''
-  // 原始格式：`apizero: xxx | 哼哼猫: yyy`。备用源常年 402，会盖掉主力源的真实原因，
-  // 所以只看主力源那一段
-  const primary = raw.split(' | ')[0].replace(/^apizero:\s*/, '')
-  const e = primary || raw
-  if (/短链解析失败/.test(e)) return '短链无法展开，建议发完整链接'
-  if (/5020|proxy race/.test(e)) return '小红书上游抓取失败（已自动重试）'
-  if (/4030|额度已用完/.test(e)) return 'apizero 额度已用完'
-  if (/4029|调用过快/.test(e)) return '调用过快被限流'
-  if (/timeout/i.test(e)) return '请求超时'
-  // 其余错误码（5021 风控拦截等）直接用 apizero 自己的 msg，不用每出一个码改一次代码
-  const jsonPart = e.match(/\{[\s\S]*\}/)
-  if (jsonPart) {
-    try {
-      const msg = JSON.parse(jsonPart[0])?.msg
-      if (typeof msg === 'string' && msg) return msg.slice(0, 60)
-    } catch {
-      const loose = e.match(/"msg"\s*:\s*"([^"]{2,60})/)
-      if (loose) return loose[1]
-    }
-  }
-  const loose = e.match(/"msg"\s*:\s*"([^"]{2,60})/)
-  if (loose) return loose[1]
-  return e.slice(0, 80) || '未知原因'
-}
-
-/**
  * 解析小红书链接（统一入口 - 二重容错机制）
  * 1. 第一次尝试 apizero API（完整数据）
  * 2. 失败后降级到哼哼猫API（免费但数据不全）
@@ -999,109 +969,88 @@ export async function POST(request: NextRequest) {
       // 立即返回，iOS 不等待
       return NextResponse.json({
         success: true,
-        message: `⏳ 已提交后台采集\n结果稍后在飞书表格查看`,
+        message: `⏳ 正在后台保存到飞书，稍后查看表格...`,
         data: { async: true }
       })
     }
 
-    // 同步模式：解析 + 建记录跑完就把真实结果返给快捷指令（通常几秒），
-    // 图片下载上传挪到后台（10 张图实测要十几秒，不值得让手机端干等）；
-    // 万一解析本身很慢（apizero 重试路径最坏 60 秒），20 秒后整体转后台
-    const collect = async () => {
-      // 1. 解析小红书链接（自动选择API）
-      const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
+    // 同步模式（原有逻辑）
+    // 1. 解析小红书链接（自动选择API）
+    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
 
-      // 兜底时把错误原因写入备注
-      const finalRemark = apiUsed === 'fallback'
-        ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
-        : remark
+    // 兜底时把错误原因写入备注
+    const finalRemark = apiUsed === 'fallback'
+      ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
+      : remark
 
-      // 2. 先建记录（不含图片），结果就能马上回给快捷指令
-      const { recordId } = await saveToFeishu(
-        finalAppToken,
-        finalTableId,
+    // 2. 处理图片：下载并上传到飞书，获取 file_token
+    const fileTokens = await processImages(images, finalAppToken)
+
+    // 3. 保存到飞书表格（使用 file_token）
+    await saveToFeishu(
+      finalAppToken,
+      finalTableId,
+      title,
+      content,
+      tags,
+      fileTokens,
+      url,
+      authorName,
+      viewCount,
+      likedCount,
+      collectedCount,
+      commentCount,
+      publishTime,
+      finalRemark
+    )
+
+    const duration = Date.now() - startTime
+
+    console.log('[快捷保存] 保存成功! 耗时:', duration + 'ms')
+
+    // 4. 返回成功消息
+    const successImages = fileTokens.filter(token => token !== null).length
+    const hasFailedImages = successImages < images.length
+
+    // 构建API使用提示
+    let apiInfo = ''
+    if (apiUsed === 'apizero') {
+      apiInfo = '\n🎯 apizero API'
+    } else if (apiUsed === 'henghengmao') {
+      apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
+    } else if (apiUsed === 'fallback') {
+      apiInfo = '\n🆘 API全部失败，已创建空记录，请到飞书手动补充内容'
+    }
+
+    // 图片状态提示
+    let imageInfo = ''
+    if (hasFailedImages) {
+      const failedCount = images.length - successImages
+      imageInfo = `\n\n⚠️ 图片上传失败 ${failedCount}/${images.length} 张\n💡 建议：立即重新运行快捷指令\n（链接已在剪贴板，直接运行即可）`
+    } else {
+      imageInfo = `\n📸 ${successImages} 张图片全部保存成功`
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `✅ 保存${hasFailedImages ? '部分' : ''}成功!${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}${imageInfo}\n👁️ ${viewCount} 浏览\n⏱️ 耗时${duration}ms`,
+      data: {
         title,
-        content,
-        tags,
-        [],
-        url,
         authorName,
+        imageCount: successImages,
+        totalImages: images.length,
+        failedImages: images.length - successImages,
+        hasFailedImages,
         viewCount,
         likedCount,
         collectedCount,
         commentCount,
-        publishTime,
-        finalRemark
-      )
-
-      const duration = Date.now() - startTime
-      console.log('[快捷保存] 记录已建，耗时:', duration + 'ms，图片转后台:', images.length, '张')
-
-      // 3. 结果消息：快捷指令直接把 message 弹成通知，成功/失败要一眼可辨
-      const isFallback = apiUsed === 'fallback'
-      const headline = isFallback ? '⚠️ 采集失败，已在飞书建占位记录' : '✅ 采集成功'
-      const apiInfo = isFallback
-        ? `\n原因：${briefApiError(apiError)}\n需手动补充标题和正文`
-        : apiUsed === 'henghengmao'
-          ? '\n⚠️ 走的备用源，互动数据需手填'
-          : ''
-      const imageInfo = images.length > 0 ? `\n📸 ${images.length} 张图片后台上传中` : ''
-
-      return {
-        payload: {
-          success: !isFallback,
-          message: `${headline}${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}${imageInfo}\n👍 ${likedCount} · ⭐ ${collectedCount} · 💬 ${commentCount}\n⏱️ 耗时${duration}ms`,
-          data: {
-            title,
-            authorName,
-            recordId,
-            imageCount: images.length,
-            imagesPending: images.length > 0,
-            viewCount,
-            likedCount,
-            collectedCount,
-            commentCount,
-            duration,
-            apiUsed,
-            apiError
-          }
-        },
-        imageJob: { recordId, images }
+        duration,
+        apiUsed,
+        apiError
       }
-    }
+    })
 
-    // 图片收尾：记录建好之后把图片补上去
-    const finishImages = async (job: { recordId?: string; images: string[] }) => {
-      if (!job.recordId || job.images.length === 0) return
-      await processImagesAndUpdate(job.recordId, job.images, finalAppToken, finalTableId)
-    }
-
-    const SYNC_BUDGET_MS = 20000
-    const work = collect()
-    const raced = await Promise.race([
-      work.then(result => ({ handedOff: false as const, result })),
-      new Promise<{ handedOff: true }>(resolve => setTimeout(() => resolve({ handedOff: true }), SYNC_BUDGET_MS)),
-    ])
-
-    if (raced.handedOff) {
-      console.log('[快捷保存] ⏳ 超过', SYNC_BUDGET_MS, 'ms，转后台继续')
-      after(async () => {
-        try {
-          const result = await work
-          await finishImages(result.imageJob)
-        } catch (err) {
-          console.error('[快捷保存-后台接管] ❌ 失败:', err)
-        }
-      })
-      return NextResponse.json({
-        success: true,
-        message: '⏳ 上游较慢，已转后台继续采集\n稍后到飞书表格查看结果',
-        data: { handedOff: true }
-      })
-    }
-
-    after(() => finishImages(raced.result.imageJob).catch(err => console.error('[快捷保存-图片后台] ❌ 失败:', err)))
-    return NextResponse.json(raced.result.payload)
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[快捷保存] 错误:', error)
