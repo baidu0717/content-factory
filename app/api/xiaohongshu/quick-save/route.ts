@@ -150,13 +150,22 @@ async function parseXiaohongshuWithApiZero(url: string) {
   const hasDesc = typeof d.desc === 'string' && d.desc.trim().length > 0
   const rawContent = hasDesc ? d.desc : (d.title || '')
 
+  // 话题标签的合法字符：不含空白、井号、@，也不含中文/英文标点
+  // （否则「住的是#3号楼，房间朝南。价格…」整句会被当成一个标签）
+  const TAG_BODY = '[^\\s#@，。！？、；：,.!?()（）\\[\\]"\'…]{1,30}'
+
   let content = rawContent
   content = content.replace(/#[^#]+\[话题\]#/g, ' ')
-  content = content.replace(/(\s+[@#]\S+)+\s*$/g, '')
+  // 剥掉末尾的话题标签串。两种写法都要覆盖：
+  //   「太贴心了～）#法国旅游#瑞士旅游#…」  紧挨着，标签前没有空白
+  //   「…！\n\n#梵蒂冈 #梵蒂冈旅行# …」    换行/空格分隔
+  content = content.replace(new RegExp('(?:\\s*[@#]' + TAG_BODY + '#?)+\\s*$'), '')
   content = content.replace(/[^\S\n]+/g, ' ').trim()
 
   const tagSet = new Set<string>()
-  const tagPattern = /#([^#\s\[]+)(?:\[话题\])?#?/g
+  // 用前瞻而不是 `#?` 收尾：标签紧挨着写时（#a#b#c），闭合的井号同时是下一个标签的
+  // 开头井号，被吃掉就会隔一个丢一个
+  const tagPattern = new RegExp('#(' + TAG_BODY + ')(?:\\[话题\\])?(?=#|\\s|$)', 'g')
   let match
   while ((match = tagPattern.exec(rawContent)) !== null) {
     tagSet.add('#' + match[1])
