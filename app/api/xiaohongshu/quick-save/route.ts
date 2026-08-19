@@ -2,21 +2,13 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { getAppAccessToken, getUserAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 import axios from 'axios'
 
-// 302.ai API 配置（主力）
-const API_302AI_KEY = process.env.API_302AI_KEY || ''
-const API_302AI_BASE = 'https://api.302ai.cn'
+// apizero.cn video-parse API 配置（主力）
+const APIZERO_API_KEY = process.env.APIZERO_API_KEY || ''
+const APIZERO_API_BASE = 'https://v1.apizero.cn/api/video-parse'
 
-// 读取系统代理并构建 axios proxy 配置
-// Node.js 内置 fetch (undici) 不自动使用 https_proxy，axios 支持显式代理配置
-function getAxiosProxyConfig() {
-  const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY ||
-                   process.env.http_proxy || process.env.HTTP_PROXY || ''
-  if (!proxyUrl) return {}
-  try {
-    const u = new URL(proxyUrl)
-    return { proxy: { protocol: u.protocol.replace(':', ''), host: u.hostname, port: parseInt(u.port) || 80 } }
-  } catch { return {} }
-}
+// apizero 单次请求超时：它自身失败要烧 9~13 秒（内部代理竞速两轮），
+// 超时设太短会把真实错误码掐成 timeout，反而看不出失败原因
+const APIZERO_TIMEOUT_MS = 25000
 
 // 哼哼猫 API 配置（备用，免费但数据不全）
 const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
@@ -89,84 +81,99 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
 }
 
 /**
- * 解析小红书链接（使用 302.ai API - 主力）
+ * apizero 的失败是否值得重试
+ * 5020 = 小红书侧抓取失败，其中只有 note_unavailable（笔记删除/私密）是确定性失败，
+ * 其余（proxy_fail / miss / rate_limit 等）换一轮代理往往就成功
+ * 无响应（超时、网络错误）不重试：再等一个 25 秒也大概率还是拿不到
  */
-async function parseXiaohongshuWith302ai(url: string) {
-  console.log('[快捷保存-302.ai] 开始解析链接:', url)
+function isApiZeroRetryable(body: any): boolean {
+  if (!body || body.code !== 5020) return false
+  return body?.data?.reason !== 'note_unavailable'
+}
 
-  // 302.ai API 需要 note_id，先解析短链接获取
-  const { noteId } = await getFullUrlAndNoteId(url)
+/**
+ * 解析小红书链接（使用 apizero.cn video-parse API - 主力）
+ */
+async function parseXiaohongshuWithApiZero(url: string) {
+  console.log('[快捷保存-apizero] 开始解析链接:', url)
 
-  console.log('[快捷保存-302.ai] 调用302.ai API...')
-  console.log('[快捷保存-302.ai] note_id:', noteId)
+  // apizero 需要真实小红书链接，先解析短链接
+  const { fullUrl } = await getFullUrlAndNoteId(url)
 
-  // 使用 axios 发起请求（支持系统代理）
+  console.log('[快捷保存-apizero] 调用 apizero API...')
+
+  // 最多两次：上游抓取失败换一轮代理常常就成了，短链无需重新解析
   let data: any
-  try {
-    const axiosResp = await axios.get(
-      `${API_302AI_BASE}/tools/xiaohongshu/app/get_note_info?note_id=${noteId}`,
-      {
-        headers: { 'Authorization': `Bearer ${API_302AI_KEY}` },
-        timeout: 10000
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const axiosResp = await axios.get(APIZERO_API_BASE, {
+        params: { url: fullUrl, flat: 1, key: APIZERO_API_KEY },
+        timeout: APIZERO_TIMEOUT_MS
+      })
+      data = axiosResp.data
+    } catch (axiosErr: any) {
+      const body = axiosErr?.response?.data
+      const status = axiosErr?.response?.status || 'timeout'
+      const errBody = JSON.stringify(body || {}).substring(0, 200)
+      console.error(`[快捷保存-apizero] API错误（第${attempt}次）:`, status, errBody)
+      if (attempt === 1 && isApiZeroRetryable(body)) {
+        console.warn('[快捷保存-apizero] 上游抓取失败，1秒后重试一次...')
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        continue
       }
-    )
-    data = axiosResp.data
-  } catch (axiosErr: any) {
-    const status = axiosErr?.response?.status || 'timeout'
-    const errBody = JSON.stringify(axiosErr?.response?.data || {}).substring(0, 200)
-    console.error('[快捷保存-302.ai] API错误:', status, errBody)
-    throw new Error(`302.ai API请求失败: HTTP ${status}`)
+      throw new Error(`apizero API请求失败: HTTP ${status} ${errBody}`)
+    }
+
+    // HTTP 200 但业务码非 0
+    if (data.code !== 0) {
+      console.error(`[快捷保存-apizero] 业务错误（第${attempt}次）:`, data.code, data.msg)
+      if (attempt === 1 && isApiZeroRetryable(data)) {
+        console.warn('[快捷保存-apizero] 上游抓取失败，1秒后重试一次...')
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        continue
+      }
+      throw new Error(`apizero API错误: ${data.msg || JSON.stringify(data).substring(0, 200)}`)
+    }
+
+    break
   }
-  console.log('[快捷保存-302.ai] 响应:', JSON.stringify(data).substring(0, 300))
 
-  // 兼容两种响应结构
-  const noteArr = data?.data?.data
-  const noteData = noteArr?.[0]?.note_list?.[0] || noteArr?.[0]
-
-  if (!noteData) {
-    throw new Error(`302.ai API: 未找到笔记数据, 响应: ${JSON.stringify(data?.data).substring(0, 200)}`)
+  const d = data.data
+  if (!d) {
+    throw new Error('apizero API: 未返回数据')
   }
 
-  console.log('[快捷保存-302.ai] ✅ API调用成功')
+  console.log('[快捷保存-apizero] ✅ API调用成功, type:', d.type)
 
-  const userInfo = noteData.user || {}
-  const imageList = noteData.images_list || []
+  // apizero 返回结构：title = 标题，desc = 正文（含末尾话题标签）
+  // 兼容早期结构：若 desc 为空，说明是把三者合并在 title 里的老格式，走下面的智能拆分
+  const hasDesc = typeof d.desc === 'string' && d.desc.trim().length > 0
+  const rawContent = hasDesc ? d.desc : (d.title || '')
 
-  // 提取正文和话题标签
-  const rawContent = noteData.desc || ''
-
-  // 清理正文：移除末尾的话题标签
   let content = rawContent
   content = content.replace(/#[^#]+\[话题\]#/g, ' ')
   content = content.replace(/(\s+[@#]\S+)+\s*$/g, '')
-  // 只压缩行内多余空格，保留换行符（用 [^\S\n]+ 匹配非换行空白）
   content = content.replace(/[^\S\n]+/g, ' ').trim()
 
-  // 优先从结构化字段提取话题标签（302.ai API 把标签放在 hash_tag / topics，不在 desc 文本里）
   const tagSet = new Set<string>()
-  if (Array.isArray(noteData.hash_tag)) {
-    noteData.hash_tag.forEach((t: any) => { if (t.name) tagSet.add(`#${t.name}`) })
-  }
-  if (Array.isArray(noteData.topics)) {
-    noteData.topics.forEach((t: any) => { if (t.name) tagSet.add(`#${t.name}`) })
-  }
-  // 兜底：从 desc 正文中用正则提取
-  if (tagSet.size === 0) {
-    const tagPattern = /#([^#\s\[]+)(?:\[话题\])?#?/g
-    let match
-    while ((match = tagPattern.exec(rawContent)) !== null) {
-      tagSet.add('#' + match[1])
-    }
+  const tagPattern = /#([^#\s\[]+)(?:\[话题\])?#?/g
+  let match
+  while ((match = tagPattern.exec(rawContent)) !== null) {
+    tagSet.add('#' + match[1])
   }
   const tags = [...tagSet].join(' ')
 
-  // 提取标题和纯正文（智能截取）
-  let title = noteData.title || ''
+  // 新格式下标题直接取 title 字段；正文若重复了标题则去掉开头那一段
+  let title = hasDesc ? (d.title || '').trim() : ''
   let bodyContent = content
 
-  if (!title && content) {
-    // 如果API没有返回标题，从正文提取
-    const firstLine = content.split('\n')[0]
+  if (title && content.startsWith(title)) {
+    bodyContent = content.slice(title.length).trim()
+  }
+
+  // 兜底：title 为空（老格式或无标题笔记）时，沿用智能拆分逻辑
+  if (!title) {
+    const firstLine = content.split('\n')[0] || ''
     const pipeIndex = firstLine.indexOf('|||')
 
     if (pipeIndex > 0 && pipeIndex <= 50) {
@@ -192,55 +199,32 @@ async function parseXiaohongshuWith302ai(url: string) {
       title = firstLine
       bodyContent = content.split('\n').slice(1).join('\n').trim()
     }
-  } else if (title && content) {
-    // 如果API返回了标题，从正文中移除标题部分
-    if (content.startsWith(title)) {
-      bodyContent = content.substring(title.length).trim()
-    }
   }
 
-  if (!title) {
-    title = '小红书笔记'
-  }
+  if (!title) title = '小红书笔记'
+  if (!bodyContent) bodyContent = content
 
-  if (!bodyContent) {
-    bodyContent = content
-  }
-
-  // 提取图片URL（构建简化URL，去掉签名参数避免过期）
-  const images = imageList
-    .map((img: any) => {
-      // 优先使用 url，如果没有则尝试 original
-      let imageUrl = img.url || img.original || ''
-
-      if (!imageUrl) return ''
-
-      // 提取基础URL（去掉所有参数）
-      const baseUrl = imageUrl.split('?')[0]
-
-      // 构建简化URL：只保留基本的imageView参数，去掉签名
-      // 格式：https://sns-xxx.rednotecdn.com/path?imageView2/2/w/1440/format/jpg
-      const simpleUrl = `${baseUrl}?imageView2/2/w/1440/format/jpg`
-
-      console.log('[快捷保存-302.ai] 简化图片URL:', simpleUrl.substring(0, 100) + '...')
-
-      return simpleUrl
+  // 图片列表：图文笔记用 imagelist（过滤掉混在里面的视频片段），视频笔记用封面
+  let images: string[] = []
+  if (d.type === '视频') {
+    if (d.cover_url) images = [d.cover_url]
+  } else {
+    images = (d.imagelist || []).filter((u: string) => {
+      const path = u.split('?')[0].toLowerCase()
+      return !path.endsWith('.mp4') && !path.endsWith('.mov')
     })
-    .filter(Boolean)
+  }
 
-  // 提取互动数据（302.ai API的优势）
-  const authorName = userInfo.nickname || userInfo.name || ''
-  const viewCount = parseInt(noteData.view_count || '0')
-  const likedCount = parseInt(noteData.liked_count || '0')
-  const collectedCount = parseInt(noteData.collected_count || '0')
-  const commentCount = parseInt(noteData.comments_count || '0')
+  const stats = d.stats || {}
+  const authorName = stats.author_name || d.source?.author_name || ''
+  const viewCount = parseInt(stats.play_count || '0')
+  const likedCount = parseInt(stats.like_count || '0')
+  const collectedCount = parseInt(stats.collect_count || '0')
+  const commentCount = parseInt(stats.comment_count || '0')
+  const publishTime = stats.publish_time ? String(stats.publish_time).split(' ')[0] : ''
 
-  // 转换时间戳为日期字符串
-  const timestamp = noteData.time || noteData.create_time || 0
-  const publishTime = timestamp ? new Date(timestamp * 1000).toISOString().split('T')[0] : ''
-
-  console.log('[快捷保存-302.ai] 解析成功 - 标题:', title, '图片数:', images.length)
-  console.log('[快捷保存-302.ai] ✅ 完整数据 - 作者:', authorName, '浏览:', viewCount, '点赞:', likedCount)
+  console.log('[快捷保存-apizero] 解析成功 - 标题:', title, '图片数:', images.length)
+  console.log('[快捷保存-apizero] ✅ 完整数据 - 作者:', authorName, '点赞:', likedCount)
 
   return {
     title,
@@ -406,63 +390,38 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
- * 通过搜索接口补充笔记统计数据（当详情API失效时使用）
- * 用标题关键词搜索，再按 note_id 匹配
+ * 把 API 原始报错压成一句人话，用于快捷指令弹的通知
  */
-async function fetchStatsViaSearch(noteId: string, title: string): Promise<{
-  likedCount: number
-  collectedCount: number
-  commentCount: number
-  authorName: string
-  viewCount: number
-  publishTime: string
-  foundNoteId?: string
-}> {
-  // 取标题前12个字符作为搜索关键词（去掉特殊字符）
-  const keyword = title.replace(/[❗️‼️❓！？]/g, '').trim().substring(0, 12)
-  console.log('[搜索补充] 关键词:', keyword, '目标noteId:', noteId || '(短链，取第一条)')
-
-  const axiosResp = await axios.get(
-    `https://api.302ai.cn/tools/xiaohongshu/app/search_notes?keyword=${encodeURIComponent(keyword)}&page=1`,
-    {
-      headers: { 'Authorization': `Bearer ${API_302AI_KEY}` },
-      timeout: 8000
+function briefApiError(apiError?: string): string {
+  const raw = apiError || ''
+  // 原始格式：`apizero: xxx | 哼哼猫: yyy`。备用源常年 402，会盖掉主力源的真实原因，
+  // 所以只看主力源那一段
+  const primary = raw.split(' | ')[0].replace(/^apizero:\s*/, '')
+  const e = primary || raw
+  if (/短链解析失败/.test(e)) return '短链无法展开，建议发完整链接'
+  if (/5020|proxy race/.test(e)) return '小红书上游抓取失败（已自动重试）'
+  if (/4030|额度已用完/.test(e)) return 'apizero 额度已用完'
+  if (/4029|调用过快/.test(e)) return '调用过快被限流'
+  if (/timeout/i.test(e)) return '请求超时'
+  // 其余错误码（5021 风控拦截等）直接用 apizero 自己的 msg，不用每出一个码改一次代码
+  const jsonPart = e.match(/\{[\s\S]*\}/)
+  if (jsonPart) {
+    try {
+      const msg = JSON.parse(jsonPart[0])?.msg
+      if (typeof msg === 'string' && msg) return msg.slice(0, 60)
+    } catch {
+      const loose = e.match(/"msg"\s*:\s*"([^"]{2,60})/)
+      if (loose) return loose[1]
     }
-  )
-  const data = axiosResp.data
-  if (data.error) throw new Error(data.error.message_cn || '搜索接口错误')
-
-  const items: any[] = data?.data?.data?.items || []
-
-  // noteId 为空（短链场景）时取第一条；否则按 noteId 精确匹配
-  const match = noteId
-    ? items.find((item: any) => item.note?.id === noteId)
-    : items[0]
-
-  if (!match) {
-    console.log('[搜索补充] 未在搜索结果中找到匹配笔记')
-    return { likedCount: 0, collectedCount: 0, commentCount: 0, authorName: '', viewCount: 0, publishTime: '' }
   }
-
-  const note = match.note
-  const publishTime = note.timestamp ? new Date(note.timestamp * 1000).toISOString().split('T')[0] : ''
-
-  console.log('[搜索补充] 找到笔记:', note.id, '作者:', note.user?.nickname)
-
-  return {
-    likedCount: note.liked_count || 0,
-    collectedCount: note.collected_count || 0,
-    commentCount: note.comments_count || 0,
-    authorName: note.user?.nickname || '',
-    viewCount: 0,
-    publishTime,
-    foundNoteId: note.id || undefined
-  }
+  const loose = e.match(/"msg"\s*:\s*"([^"]{2,60})/)
+  if (loose) return loose[1]
+  return e.slice(0, 80) || '未知原因'
 }
 
 /**
- * 解析小红书链接（统一入口 - 三重容错机制）
- * 1. 第一次尝试302.ai API（完整数据）
+ * 解析小红书链接（统一入口 - 二重容错机制）
+ * 1. 第一次尝试 apizero API（完整数据）
  * 2. 失败后降级到哼哼猫API（免费但数据不全）
  * 3. 两次都失败，兜底保存（仅URL，飞书留空记录等待手动补充）
  */
@@ -477,67 +436,35 @@ async function parseXiaohongshu(url: string): Promise<{
   collectedCount: number
   commentCount: number
   publishTime: string
-  apiUsed?: '302ai' | 'henghengmao' | 'fallback'
+  apiUsed?: 'apizero' | 'henghengmao' | 'fallback'
   apiError?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
-  console.log('[快捷保存] 策略: 302.ai → 哼哼猫 → 兜底保存')
+  console.log('[快捷保存] 策略: apizero → 哼哼猫 → 兜底保存')
 
-  // 尝试1: 302.ai API（优先）
+  // 尝试1: apizero API（优先）
   try {
-    console.log('[快捷保存] 🎯 尝试使用302.ai API（第1次）...')
-    const result = await parseXiaohongshuWith302ai(url)
-    console.log('[快捷保存] ✅ 302.ai API成功！使用完整数据')
+    console.log('[快捷保存] 🎯 尝试使用apizero API（第1次）...')
+    const result = await parseXiaohongshuWithApiZero(url)
+    console.log('[快捷保存] ✅ apizero API成功！使用完整数据')
     return {
       ...result,
-      apiUsed: '302ai'
+      apiUsed: 'apizero'
     }
-  } catch (error302ai: any) {
-    const errorMsg1 = error302ai?.message || String(error302ai)
-    console.warn('[快捷保存] ⚠️  302.ai API失败:', errorMsg1)
+  } catch (errorApiZero: any) {
+    const errorMsg1 = errorApiZero?.message || String(errorApiZero)
+    console.warn('[快捷保存] ⚠️  apizero API失败:', errorMsg1)
     console.warn('[快捷保存] 直接降级到哼哼猫API（无等待）...')
 
     // 尝试2: 哼哼猫API（备用，直接切换无需等待）
     try {
       console.log('[快捷保存] 🆘 降级使用哼哼猫API...')
       const result = await parseXiaohongshuWithHenghengmao(url)
-      console.log('[快捷保存] ✅ 哼哼猫API成功！尝试用搜索接口补充统计数据...')
-
-      // 哼哼猫没有互动数据，用搜索接口补充
-      // 短链（xhslink.com）无法从URL提取noteId，传空字符串让搜索取第一条结果
-      const noteIdMatch = url.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
-      const noteId = noteIdMatch ? noteIdMatch[1] : ''
-      if (result.title && result.title !== '小红书笔记') {
-        try {
-          const stats = await fetchStatsViaSearch(noteId, result.title)
-          if (stats.authorName || stats.likedCount > 0) {
-            console.log('[快捷保存] 📊 搜索补充成功 - 作者:', stats.authorName, '点赞:', stats.likedCount)
-
-            // 短链场景：搜索拿到了 noteId，再尝试用 302.ai 获取完整数据（含图片顺序、完整正文）
-            if (!noteId && stats.foundNoteId && API_302AI_KEY) {
-              try {
-                console.log('[快捷保存] 🔄 用搜索到的noteId重新调302.ai获取完整数据:', stats.foundNoteId)
-                const fullResult = await parseXiaohongshuWith302ai(
-                  `https://www.xiaohongshu.com/explore/${stats.foundNoteId}`
-                )
-                console.log('[快捷保存] ✅ 通过搜索noteId成功获取302.ai完整数据')
-                return { ...fullResult, apiUsed: '302ai', apiError: `短链展开失败降级: ${errorMsg1}` }
-              } catch (retryErr: any) {
-                console.warn('[快捷保存] 重试302.ai失败，使用哼哼猫+搜索数据:', retryErr?.message)
-              }
-            }
-
-            return { ...result, ...stats, apiUsed: 'henghengmao', apiError: `302.ai失败: ${errorMsg1}` }
-          }
-        } catch (statsErr: any) {
-          console.warn('[快捷保存] 统计数据补充失败（非致命）:', statsErr?.message)
-        }
-      }
-
+      console.log('[快捷保存] ✅ 哼哼猫API成功！')
       return {
         ...result,
         apiUsed: 'henghengmao',
-        apiError: `302.ai失败: ${errorMsg1}`
+        apiError: `apizero失败: ${errorMsg1}`
       }
     } catch (henghengmaoError: any) {
       const henghengmaoMsg = henghengmaoError?.message || String(henghengmaoError)
@@ -557,7 +484,7 @@ async function parseXiaohongshu(url: string): Promise<{
         commentCount: 0,
         publishTime: '',
         apiUsed: 'fallback',
-        apiError: `302.ai: ${errorMsg1} | 哼哼猫: ${henghengmaoMsg}`
+        apiError: `apizero: ${errorMsg1} | 哼哼猫: ${henghengmaoMsg}`
       }
     }
   }
@@ -1072,88 +999,109 @@ export async function POST(request: NextRequest) {
       // 立即返回，iOS 不等待
       return NextResponse.json({
         success: true,
-        message: `⏳ 正在后台保存到飞书，稍后查看表格...`,
+        message: `⏳ 已提交后台采集\n结果稍后在飞书表格查看`,
         data: { async: true }
       })
     }
 
-    // 同步模式（原有逻辑）
-    // 1. 解析小红书链接（自动选择API）
-    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
+    // 同步模式：解析 + 建记录跑完就把真实结果返给快捷指令（通常几秒），
+    // 图片下载上传挪到后台（10 张图实测要十几秒，不值得让手机端干等）；
+    // 万一解析本身很慢（apizero 重试路径最坏 60 秒），20 秒后整体转后台
+    const collect = async () => {
+      // 1. 解析小红书链接（自动选择API）
+      const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
 
-    // 兜底时把错误原因写入备注
-    const finalRemark = apiUsed === 'fallback'
-      ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
-      : remark
+      // 兜底时把错误原因写入备注
+      const finalRemark = apiUsed === 'fallback'
+        ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
+        : remark
 
-    // 2. 处理图片：下载并上传到飞书，获取 file_token
-    const fileTokens = await processImages(images, finalAppToken)
-
-    // 3. 保存到飞书表格（使用 file_token）
-    await saveToFeishu(
-      finalAppToken,
-      finalTableId,
-      title,
-      content,
-      tags,
-      fileTokens,
-      url,
-      authorName,
-      viewCount,
-      likedCount,
-      collectedCount,
-      commentCount,
-      publishTime,
-      finalRemark
-    )
-
-    const duration = Date.now() - startTime
-
-    console.log('[快捷保存] 保存成功! 耗时:', duration + 'ms')
-
-    // 4. 返回成功消息
-    const successImages = fileTokens.filter(token => token !== null).length
-    const hasFailedImages = successImages < images.length
-
-    // 构建API使用提示
-    let apiInfo = ''
-    if (apiUsed === '302ai') {
-      apiInfo = '\n🎯 302.ai API'
-    } else if (apiUsed === 'henghengmao') {
-      apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
-    } else if (apiUsed === 'fallback') {
-      apiInfo = '\n🆘 API全部失败，已创建空记录，请到飞书手动补充内容'
-    }
-
-    // 图片状态提示
-    let imageInfo = ''
-    if (hasFailedImages) {
-      const failedCount = images.length - successImages
-      imageInfo = `\n\n⚠️ 图片上传失败 ${failedCount}/${images.length} 张\n💡 建议：立即重新运行快捷指令\n（链接已在剪贴板，直接运行即可）`
-    } else {
-      imageInfo = `\n📸 ${successImages} 张图片全部保存成功`
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `✅ 保存${hasFailedImages ? '部分' : ''}成功!${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}${imageInfo}\n👁️ ${viewCount} 浏览\n⏱️ 耗时${duration}ms`,
-      data: {
+      // 2. 先建记录（不含图片），结果就能马上回给快捷指令
+      const { recordId } = await saveToFeishu(
+        finalAppToken,
+        finalTableId,
         title,
+        content,
+        tags,
+        [],
+        url,
         authorName,
-        imageCount: successImages,
-        totalImages: images.length,
-        failedImages: images.length - successImages,
-        hasFailedImages,
         viewCount,
         likedCount,
         collectedCount,
         commentCount,
-        duration,
-        apiUsed,
-        apiError
-      }
-    })
+        publishTime,
+        finalRemark
+      )
 
+      const duration = Date.now() - startTime
+      console.log('[快捷保存] 记录已建，耗时:', duration + 'ms，图片转后台:', images.length, '张')
+
+      // 3. 结果消息：快捷指令直接把 message 弹成通知，成功/失败要一眼可辨
+      const isFallback = apiUsed === 'fallback'
+      const headline = isFallback ? '⚠️ 采集失败，已在飞书建占位记录' : '✅ 采集成功'
+      const apiInfo = isFallback
+        ? `\n原因：${briefApiError(apiError)}\n需手动补充标题和正文`
+        : apiUsed === 'henghengmao'
+          ? '\n⚠️ 走的备用源，互动数据需手填'
+          : ''
+      const imageInfo = images.length > 0 ? `\n📸 ${images.length} 张图片后台上传中` : ''
+
+      return {
+        payload: {
+          success: !isFallback,
+          message: `${headline}${apiInfo}\n\n📝 ${title}\n👤 ${authorName || '(待填写)'}${imageInfo}\n👍 ${likedCount} · ⭐ ${collectedCount} · 💬 ${commentCount}\n⏱️ 耗时${duration}ms`,
+          data: {
+            title,
+            authorName,
+            recordId,
+            imageCount: images.length,
+            imagesPending: images.length > 0,
+            viewCount,
+            likedCount,
+            collectedCount,
+            commentCount,
+            duration,
+            apiUsed,
+            apiError
+          }
+        },
+        imageJob: { recordId, images }
+      }
+    }
+
+    // 图片收尾：记录建好之后把图片补上去
+    const finishImages = async (job: { recordId?: string; images: string[] }) => {
+      if (!job.recordId || job.images.length === 0) return
+      await processImagesAndUpdate(job.recordId, job.images, finalAppToken, finalTableId)
+    }
+
+    const SYNC_BUDGET_MS = 20000
+    const work = collect()
+    const raced = await Promise.race([
+      work.then(result => ({ handedOff: false as const, result })),
+      new Promise<{ handedOff: true }>(resolve => setTimeout(() => resolve({ handedOff: true }), SYNC_BUDGET_MS)),
+    ])
+
+    if (raced.handedOff) {
+      console.log('[快捷保存] ⏳ 超过', SYNC_BUDGET_MS, 'ms，转后台继续')
+      after(async () => {
+        try {
+          const result = await work
+          await finishImages(result.imageJob)
+        } catch (err) {
+          console.error('[快捷保存-后台接管] ❌ 失败:', err)
+        }
+      })
+      return NextResponse.json({
+        success: true,
+        message: '⏳ 上游较慢，已转后台继续采集\n稍后到飞书表格查看结果',
+        data: { handedOff: true }
+      })
+    }
+
+    after(() => finishImages(raced.result.imageJob).catch(err => console.error('[快捷保存-图片后台] ❌ 失败:', err)))
+    return NextResponse.json(raced.result.payload)
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[快捷保存] 错误:', error)
