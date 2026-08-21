@@ -644,7 +644,8 @@ function buildRemark(
   apiUsed: string | undefined,
   apiError: string | undefined,
   userRemark?: string,
-  compareNote?: string
+  compareNote?: string,
+  dupNote?: string
 ): string {
   const parts: string[] = []
   if (userRemark) parts.push(userRemark)
@@ -660,10 +661,73 @@ function buildRemark(
   // 其余情况（henghengmao+apizero / henghengmao+justone / apizero / justone）
   // 数据都是齐的，不加警告
 
+  if (dupNote) parts.push(dupNote)
   if (apiError) parts.push(apiError)
   if (compareNote) parts.push(compareNote)
 
   return parts.join('\n')
+}
+
+/**
+ * 把分享链接归一化成干净地址：`https://www.xiaohongshu.com/discovery/item/<note_id>`
+ *
+ * 为什么要做（2026-08-22）：
+ * 小红书 App 复制出来的分享链展开后带一串标识，其中
+ *   shareRedId —— **账号级、跨笔记恒定**，实测同一账号分享的三条链这个值完全相同，
+ *                 换账号才变。等于把"哪个账号在采这些笔记"一起送给了第三方，
+ *                 也让小红书那边能把"陌生IP高频抓取"和这个账号对上。
+ *   xsec_token —— 该笔记的读取凭证（笔记级，不是账号级）
+ *   share_id / apptime / app_version / app_platform —— 单次分享标识和客户端指纹
+ *
+ * 而这些**一个都不需要**：实测哼哼猫和 apizero 只给 note_id 都能正常返回
+ * （哼哼猫三种形态都是正文52字/图2张，apizero 连 xsec_token 都不要）。
+ * 纯属白送，所以剥掉。
+ *
+ * 附带好处：同一篇笔记重新分享一次就是一条新短链，归一化之后链接稳定，
+ * 重复采集能当场认出来（法意瑞表里就有 9 组"同一篇笔记不同短链"）。
+ *
+ * 解析失败时返回原始链接 —— 隐私加固不能反过来降低成功率。
+ */
+async function normalizeXhsUrl(url: string): Promise<{ cleanUrl: string; noteId: string }> {
+  try {
+    const { noteId } = await getFullUrlAndNoteId(url)
+    if (noteId) {
+      return { cleanUrl: `https://www.xiaohongshu.com/discovery/item/${noteId}`, noteId }
+    }
+  } catch (e: any) {
+    console.warn('[快捷保存] 链接归一化失败，退回原始链接（本次会带上账号标识）:',
+      (e?.message || String(e)).substring(0, 100))
+  }
+  return { cleanUrl: url, noteId: '' }
+}
+
+/** 查这篇笔记在目标表里是否已经采过（只提示，不拦截） */
+async function findExistingRecord(
+  appToken: string, tableId: string, noteUrl: string
+): Promise<string | null> {
+  if (!noteUrl) return null
+  try {
+    const token = await getAppAccessToken()
+    const resp = await fetch(
+      `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records/search?page_size=5`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          filter: {
+            conjunction: 'and',
+            conditions: [{ field_name: '笔记链接', operator: 'is', value: [noteUrl] }],
+          },
+        }),
+      }
+    )
+    const data = await resp.json() as any
+    const hit = data?.data?.items?.[0]
+    return hit?.record_id || null
+  } catch (e: any) {
+    console.warn('[快捷保存] 查重失败（不影响采集）:', (e?.message || String(e)).substring(0, 80))
+    return null
+  }
 }
 
 type XhsStats = {
@@ -740,13 +804,21 @@ async function parseXiaohongshu(url: string): Promise<{
   apiUsed?: 'henghengmao+apizero' | 'henghengmao+justone' | 'henghengmao' | 'apizero' | 'justone' | 'fallback'
   apiError?: string
   compareNote?: string
+  normalizedUrl?: string
+  noteId?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
   console.log('[快捷保存] 策略: 哼哼猫(图文) ‖ apizero(互动数)，缺互动数才动第三级 JustOne')
 
+  // 先归一化，剥掉 shareRedId / xsec_token / share_id 等标识再往外发
+  const { cleanUrl, noteId } = await normalizeXhsUrl(url)
+  if (noteId) {
+    console.log('[快捷保存] 已归一化，note_id =', noteId, '（账号标识未外发）')
+  }
+
   const [hhmSettled, azSettled] = await Promise.allSettled([
-    parseXiaohongshuWithHenghengmao(url),
-    parseXiaohongshuWithApiZero(url),
+    parseXiaohongshuWithHenghengmao(cleanUrl),
+    parseXiaohongshuWithApiZero(cleanUrl),
   ])
   const hhm = hhmSettled.status === 'fulfilled' ? hhmSettled.value : null
   const az  = azSettled.status  === 'fulfilled' ? azSettled.value  : null
@@ -761,24 +833,30 @@ async function parseXiaohongshu(url: string): Promise<{
       return {
         ...hhm, ...azStats,
         apiUsed: 'henghengmao+apizero',
+        normalizedUrl: cleanUrl,
+        noteId,
         compareNote: '采集来源: 哼哼猫图文 + apizero互动数',
       }
     }
 
     // apizero 没给互动数，才动第三级
     console.warn('[快捷保存] ⚠️  apizero 未取到互动数，尝试第三级 JustOne:', azErr.substring(0, 80))
-    const joStats = pickStats(await tryJustOne(url))
+    const joStats = pickStats(await tryJustOne(cleanUrl))
     if (joStats) {
       console.log('[快捷保存] ✅ 哼哼猫图文 + JustOne互动数')
       return {
         ...hhm, ...joStats,
         apiUsed: 'henghengmao+justone',
+        normalizedUrl: cleanUrl,
+        noteId,
         compareNote: '采集来源: 哼哼猫图文 + JustOne互动数（apizero未取到）',
       }
     }
     return {
       ...hhm,
       apiUsed: 'henghengmao',
+        normalizedUrl: cleanUrl,
+        noteId,
       apiError: `apizero未取到互动数: ${azErr.substring(0, 160)}`,
       compareNote: '采集来源: 哼哼猫图文（apizero和JustOne都未取到互动数）',
     }
@@ -790,6 +868,8 @@ async function parseXiaohongshu(url: string): Promise<{
     return {
       ...az,
       apiUsed: 'apizero',
+        normalizedUrl: cleanUrl,
+        noteId,
       apiError: `哼哼猫失败(图文改用apizero): ${hhmErr.substring(0, 160)}`,
       compareNote: '采集来源: apizero 图文+互动数（哼哼猫未取到）',
     }
@@ -797,11 +877,13 @@ async function parseXiaohongshu(url: string): Promise<{
 
   // ── 情况3：两家都挂 —— 第三级顶上 ──
   console.warn('[快捷保存] ⚠️  哼哼猫和 apizero 都失败，尝试第三级 JustOne')
-  const jo = await tryJustOne(url)
+  const jo = await tryJustOne(cleanUrl)
   if (jo) {
     return {
       ...jo,
       apiUsed: 'justone',
+        normalizedUrl: cleanUrl,
+        noteId,
       apiError: `哼哼猫: ${hhmErr.substring(0, 80)} | apizero: ${azErr.substring(0, 80)}`,
       compareNote: '采集来源: JustOne 全套（前两家都未取到）',
     }
@@ -821,6 +903,8 @@ async function parseXiaohongshu(url: string): Promise<{
     commentCount: 0,
     publishTime: '',
     apiUsed: 'fallback',
+        normalizedUrl: cleanUrl,
+        noteId,
     apiError: `哼哼猫: ${hhmErr} | apizero: ${azErr} | JustOne 也未取到`,
   }
 }
@@ -1325,14 +1409,19 @@ export async function POST(request: NextRequest) {
       // 所有耗时操作移到 after() 后台执行（响应发出后才开始）
       after(async () => {
         try {
-          const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError, compareNote } = await parseXiaohongshu(url)
+          const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError, compareNote, normalizedUrl } = await parseXiaohongshu(url)
+          // 入库用归一化后的链接：稳定、可去重，也不把账号标识留在自己表里
+          const saveUrl = normalizedUrl || url
+          // 查重只提示不拦截——有时你是故意重采的
+          const dupId = await findExistingRecord(finalAppToken, finalTableId, saveUrl)
+          const dupNote = dupId ? `♻️ 这篇之前采过（record_id=${dupId}），本条是重复记录` : undefined
           // 把降级情况写入备注，方便飞书里识别（不只是兜底那一种）
-          const finalRemark = buildRemark(apiUsed, apiError, remark, compareNote)
+          const finalRemark = buildRemark(apiUsed, apiError, remark, compareNote, dupNote)
           const { recordId } = await saveToFeishu(
             finalAppToken, finalTableId,
             title, content, tags,
             [],
-            url, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime,
+            saveUrl, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime,
             finalRemark
           )
           if (images.length > 0 && recordId) {
@@ -1354,10 +1443,14 @@ export async function POST(request: NextRequest) {
 
     // 同步模式（原有逻辑）
     // 1. 解析小红书链接（自动选择API）
-    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError, compareNote } = await parseXiaohongshu(url)
+    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError, compareNote, normalizedUrl } = await parseXiaohongshu(url)
+
+    const saveUrl = normalizedUrl || url
+    const dupId = await findExistingRecord(finalAppToken, finalTableId, saveUrl)
+    const dupNote = dupId ? `♻️ 这篇之前采过（record_id=${dupId}），本条是重复记录` : undefined
 
     // 把降级情况写入备注（不只是兜底那一种）
-    const finalRemark = buildRemark(apiUsed, apiError, remark, compareNote)
+    const finalRemark = buildRemark(apiUsed, apiError, remark, compareNote, dupNote)
 
     // 2. 处理图片：下载并上传到飞书，获取 file_token
     const fileTokens = await processImages(images, finalAppToken)
@@ -1370,7 +1463,7 @@ export async function POST(request: NextRequest) {
       content,
       tags,
       fileTokens,
-      url,
+      saveUrl,
       authorName,
       viewCount,
       likedCount,
