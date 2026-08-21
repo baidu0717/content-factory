@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from 'next/server'
-import { getAppAccessToken, getUserAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
+import { getAppAccessToken, uploadFileToFeishu } from '@/lib/feishuAuth'
 import axios from 'axios'
 
 // apizero.cn video-parse API 配置（主力）
@@ -250,32 +250,51 @@ async function parseXiaohongshuWithApiZero(url: string) {
 }
 
 /**
- * 解析小红书链接（使用哼哼猫API - 免费但数据不全）
+ * 解析小红书链接（哼哼猫API - 出标题/正文/原图，不出互动数据）
+ *
+ * 400 ExtractFailed 是瞬时错误，实测同一链接单次成功率低到 58%，退避重试能救；
+ * 401/402/403 是 key 无效或额度耗尽，重试没有意义，直接抛。
  */
+const HENGHENGMAO_MAX_ATTEMPTS = 4
+
 async function parseXiaohongshuWithHenghengmao(url: string) {
   console.log('[短链解析] 开始解析链接:', url)
 
   // 哼哼猫API直接支持短链接，无需先解析
-  console.log('[短链解析] 调用哼哼猫API...')
-  const response = await fetch(HENGHENGMAO_API_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': HENGHENGMAO_API_KEY,
-      'accept-language': 'zh',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      url: url  // 直接使用原始URL（支持短链接）
+  let data: any = null
+
+  for (let attempt = 1; attempt <= HENGHENGMAO_MAX_ATTEMPTS; attempt++) {
+    console.log(`[短链解析] 调用哼哼猫API（第${attempt}/${HENGHENGMAO_MAX_ATTEMPTS}次）...`)
+    const response = await fetch(HENGHENGMAO_API_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': HENGHENGMAO_API_KEY,
+        'accept-language': 'zh',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url: url  // 直接使用原始URL（支持短链接）
+      })
     })
-  })
 
-  if (!response.ok) {
+    if (response.ok) {
+      data = await response.json()
+      break
+    }
+
     const errorText = await response.text()
-    console.error('[短链解析] API错误:', errorText)
-    throw new Error(`解析失败: HTTP ${response.status}`)
-  }
+    const errorMsg = `HTTP ${response.status} ${errorText.substring(0, 160)}`
+    console.error(`[短链解析] API错误（第${attempt}次）:`, errorMsg)
 
-  const data = await response.json()
+    if (response.status === 401 || response.status === 402 || response.status === 403) {
+      throw new Error(`解析失败(不重试): ${errorMsg}`)
+    }
+    if (attempt === HENGHENGMAO_MAX_ATTEMPTS) {
+      throw new Error(`解析失败(已重试${HENGHENGMAO_MAX_ATTEMPTS}次): ${errorMsg}`)
+    }
+
+    await delay(1000 * attempt)  // 1s / 2s / 3s 退避
+  }
 
   // 详细日志
   console.log('[短链解析] API 完整响应:', JSON.stringify(data, null, 2))
@@ -367,10 +386,18 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
   }
 
   // 提取图片URL（从medias数组）
-  const images = data.medias
-    ?.filter((media: any) => media.media_type === 'image')
-    .map((media: any) => media.resource_url || media.preview_url || '')
-    .filter(Boolean) || []
+  // 只认 resource_url（?imageView2/2/w/0 原图档）。
+  // 绝不退到 preview_url —— 它是预览档，实测 1080x1440 只有 15KB（正常 230KB），
+  // 存进去以后没人知道这张图是坏的。宁可这张缺失、留给重采。
+  const imageMedias = data.medias?.filter((media: any) => media.media_type === 'image') || []
+  const images = imageMedias
+    .map((media: any) => media.resource_url || '')
+    .filter(Boolean)
+
+  const droppedCount = imageMedias.length - images.length
+  if (droppedCount > 0) {
+    console.warn(`[短链解析] ⚠️  ${droppedCount}/${imageMedias.length} 张图无 resource_url，已跳过（不使用预览档兜底）`)
+  }
 
   console.log('[短链解析] 解析成功 - 标题:', title, '图片数:', images.length)
 
@@ -399,10 +426,19 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
- * 解析小红书链接（统一入口 - 二重容错机制）
- * 1. 第一次尝试 apizero API（完整数据）
- * 2. 失败后降级到哼哼猫API（免费但数据不全）
- * 3. 两次都失败，兜底保存（仅URL，飞书留空记录等待手动补充）
+ * 解析小红书链接（统一入口 - 两家并行互补）
+ *
+ * 实测结论（2026-08-22，同一篇笔记 18 张图两家各跑一遍）：
+ *   哼哼猫  —— 标题/正文/图片都对，resource_url 是 ?imageView2/2/w/0 原图档，
+ *             长边中位 1800、体积中位 336KB。但完全不返回作者昵称和互动数据。
+ *             单次可能返回 400 ExtractFailed，已在函数内退避重试。
+ *   apizero —— stats 里有作者、点赞、收藏、评论、发布时间。
+ *             但 imagelist 只给 !nd_prv_ 预览档，同样这 18 张长边中位 1357、
+ *             体积中位 13.6KB，肉眼马赛克；且对 2026-08 以后分享的链接成功率为 0。
+ *
+ * 所以不再串行降级（那样两家长处会互相抵消：apizero 成功则图全糊、
+ * apizero 失败才用哼哼猫则互动数全空），改为并行各取所长：
+ *   标题/正文/标签/图片 ← 哼哼猫      作者/互动数/发布时间 ← apizero
  */
 async function parseXiaohongshu(url: string): Promise<{
   title: string
@@ -415,57 +451,72 @@ async function parseXiaohongshu(url: string): Promise<{
   collectedCount: number
   commentCount: number
   publishTime: string
-  apiUsed?: 'apizero' | 'henghengmao' | 'fallback'
+  apiUsed?: 'henghengmao+apizero' | 'henghengmao' | 'apizero' | 'fallback'
   apiError?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
-  console.log('[快捷保存] 策略: apizero → 哼哼猫 → 兜底保存')
+  console.log('[快捷保存] 策略: 哼哼猫(图文) ‖ apizero(互动数据) 并行')
 
-  // 尝试1: apizero API（优先）
-  try {
-    console.log('[快捷保存] 🎯 尝试使用apizero API（第1次）...')
-    const result = await parseXiaohongshuWithApiZero(url)
-    console.log('[快捷保存] ✅ apizero API成功！使用完整数据')
+  const [hhmSettled, azSettled] = await Promise.allSettled([
+    parseXiaohongshuWithHenghengmao(url),
+    parseXiaohongshuWithApiZero(url),
+  ])
+
+  const hhm = hhmSettled.status === 'fulfilled' ? hhmSettled.value : null
+  const az  = azSettled.status  === 'fulfilled' ? azSettled.value  : null
+  const hhmErr = hhmSettled.status === 'rejected'
+    ? (hhmSettled.reason?.message || String(hhmSettled.reason)) : ''
+  const azErr = azSettled.status === 'rejected'
+    ? (azSettled.reason?.message || String(azSettled.reason)) : ''
+
+  // 情况1：哼哼猫成功 —— 图文一律用它（原图），互动数据能拿就拿
+  if (hhm) {
+    if (az) {
+      console.log('[快捷保存] ✅ 两家都成功：图文取哼哼猫(原图)，互动数据取apizero')
+      return {
+        ...hhm,
+        authorName:     az.authorName     || hhm.authorName,
+        viewCount:      az.viewCount      || hhm.viewCount,
+        likedCount:     az.likedCount     || hhm.likedCount,
+        collectedCount: az.collectedCount || hhm.collectedCount,
+        commentCount:   az.commentCount   || hhm.commentCount,
+        publishTime:    az.publishTime    || hhm.publishTime,
+        apiUsed: 'henghengmao+apizero',
+      }
+    }
+    console.warn('[快捷保存] ⚠️  apizero失败，图文已齐全，互动数据留空待手填:', azErr)
     return {
-      ...result,
-      apiUsed: 'apizero'
+      ...hhm,
+      apiUsed: 'henghengmao',
+      apiError: `apizero失败(作者/互动数留空待手填): ${azErr}`,
     }
-  } catch (errorApiZero: any) {
-    const errorMsg1 = errorApiZero?.message || String(errorApiZero)
-    console.warn('[快捷保存] ⚠️  apizero API失败:', errorMsg1)
-    console.warn('[快捷保存] 直接降级到哼哼猫API（无等待）...')
+  }
 
-    // 尝试2: 哼哼猫API（备用，直接切换无需等待）
-    try {
-      console.log('[快捷保存] 🆘 降级使用哼哼猫API...')
-      const result = await parseXiaohongshuWithHenghengmao(url)
-      console.log('[快捷保存] ✅ 哼哼猫API成功！')
-      return {
-        ...result,
-        apiUsed: 'henghengmao',
-        apiError: `apizero失败: ${errorMsg1}`
-      }
-    } catch (henghengmaoError: any) {
-      const henghengmaoMsg = henghengmaoError?.message || String(henghengmaoError)
-      console.error('[快捷保存] ❌ 哼哼猫API也失败:', henghengmaoMsg)
-      console.warn('[快捷保存] 🆘 两个API均失败，启用兜底保存（飞书留空记录）...')
-
-      // 兜底：不抛错，返回最小化数据，确保飞书至少有一条记录
-      return {
-        title: '⚠️ 待补充',
-        content: '',
-        tags: '',
-        images: [],
-        authorName: '',
-        viewCount: 0,
-        likedCount: 0,
-        collectedCount: 0,
-        commentCount: 0,
-        publishTime: '',
-        apiUsed: 'fallback',
-        apiError: `apizero: ${errorMsg1} | 哼哼猫: ${henghengmaoMsg}`
-      }
+  // 情况2：哼哼猫失败、apizero成功 —— 内容齐全但图是预览档，必须在备注里标出来
+  if (az) {
+    console.warn('[快捷保存] ⚠️  哼哼猫失败，降级用apizero，图片是预览档:', hhmErr)
+    return {
+      ...az,
+      apiUsed: 'apizero',
+      apiError: `哼哼猫失败: ${hhmErr} | ⚠️ 图片为apizero预览档(约15KB/张)，画质不合格，建议哼哼猫恢复后重采`,
     }
+  }
+
+  // 情况3：两家都失败 —— 兜底空记录，保证飞书至少留下链接
+  console.error('[快捷保存] ❌ 两家均失败，启用兜底保存（飞书留空记录）')
+  return {
+    title: '⚠️ 待补充',
+    content: '',
+    tags: '',
+    images: [],
+    authorName: '',
+    viewCount: 0,
+    likedCount: 0,
+    collectedCount: 0,
+    commentCount: 0,
+    publishTime: '',
+    apiUsed: 'fallback',
+    apiError: `哼哼猫: ${hhmErr} | apizero: ${azErr}`,
   }
 }
 
@@ -729,7 +780,7 @@ async function saveToFeishu(
 ) {
   console.log('[快捷保存-飞书] 开始保存到表格...')
 
-  const appAccessToken = await getUserAccessToken()
+  const appAccessToken = await getAppAccessToken()
 
   // 构建记录字段
   // 列顺序：笔记链接、作者昵称、封面、图片2、后续图片、标题、正文、话题标签、点赞数、收藏数、评论数、发布时间、备注、复刻情况
@@ -1023,10 +1074,12 @@ export async function POST(request: NextRequest) {
 
     // 构建API使用提示
     let apiInfo = ''
-    if (apiUsed === 'apizero') {
-      apiInfo = '\n🎯 apizero API'
+    if (apiUsed === 'henghengmao+apizero') {
+      apiInfo = '\n🎯 哼哼猫原图 + apizero互动数（完整）'
     } else if (apiUsed === 'henghengmao') {
-      apiInfo = '\n⚠️ 哼哼猫API (需手动填写互动数)'
+      apiInfo = '\n⚠️ 哼哼猫原图，apizero挂了：作者/互动数需手填'
+    } else if (apiUsed === 'apizero') {
+      apiInfo = '\n⚠️ 哼哼猫挂了，图片是apizero预览档（约15KB/张，画质不合格），建议重采'
     } else if (apiUsed === 'fallback') {
       apiInfo = '\n🆘 API全部失败，已创建空记录，请到飞书手动补充内容'
     }
@@ -1112,7 +1165,7 @@ async function processImagesAndUpdate(
   }
 
   // 3. 更新飞书记录（添加图片）
-  const appAccessToken = await getUserAccessToken()
+  const appAccessToken = await getAppAccessToken()
   const response = await fetch(
     `${FEISHU_API_URL}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
     {
