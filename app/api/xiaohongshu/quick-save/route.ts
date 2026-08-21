@@ -502,7 +502,9 @@ async function resolveNoteIdViaJustOne(shareUrl: string): Promise<string> {
  */
 async function parseXiaohongshuWithJustOne(url: string) {
   if (!JUSTONE_API_TOKEN) {
-    throw new Error('未配置 JUSTONE_API_TOKEN')
+    // 前缀 NOT_CONFIGURED 供上层区分「没启用」和「调用失败」——
+    // 两者都会退到哼哼猫，但排查方向完全不同，备注里不能混着说
+    throw new Error('NOT_CONFIGURED: 服务端未配置 JUSTONE_API_TOKEN')
   }
 
   // note_id 优先本地跟跳转拿（免费），失败再用它的短链端点（消耗一次调用）
@@ -608,7 +610,13 @@ function buildRemark(
   if (apiUsed === 'fallback') {
     parts.push('⚠️ 自动采集失败，请手动补充内容')
   } else if (apiUsed === 'henghengmao') {
-    parts.push('⚠️ JustOne 未取到数据：作者昵称/点赞/收藏/评论/发布时间为空，需手动补充')
+    // 「没配 token」和「调用失败」要分开说：前者是配置问题、配好就自动有数据，
+    // 后者才是真的取不到、只能手填。混在一起写会让排查跑偏。
+    if ((apiError || '').includes('NOT_CONFIGURED')) {
+      parts.push('⚠️ JustOne 未启用（服务端缺 JUSTONE_API_TOKEN）：作者昵称/点赞/收藏/评论/发布时间为空。配上 token 后重采即可自动获取，不必手填')
+    } else {
+      parts.push('⚠️ JustOne 调用失败：作者昵称/点赞/收藏/评论/发布时间为空，需手动补充')
+    }
   } else if (apiUsed === 'apizero') {
     parts.push('⚠️ JustOne 和哼哼猫都未取到：图片为 apizero 预览档（约15KB/张），画质不合格，建议重采')
   }
@@ -1312,7 +1320,9 @@ export async function POST(request: NextRequest) {
     if (apiUsed === 'justone') {
       apiInfo = '\n🎯 JustOne：原图 + 互动数（完整）'
     } else if (apiUsed === 'henghengmao') {
-      apiInfo = '\n⚠️ JustOne挂了，哼哼猫原图：作者/互动数需手填'
+      apiInfo = (apiError || '').includes('NOT_CONFIGURED')
+        ? '\n⚠️ JustOne未启用(缺token)，哼哼猫原图：作者/互动数为空'
+        : '\n⚠️ JustOne调用失败，哼哼猫原图：作者/互动数需手填'
     } else if (apiUsed === 'apizero') {
       apiInfo = '\n⚠️ 前两家都挂，图片是apizero预览档（约15KB/张），建议重采'
     } else if (apiUsed === 'fallback') {
