@@ -10,11 +10,19 @@ const APIZERO_API_BASE = 'https://v1.apizero.cn/api/video-parse'
 // 超时设太短会把真实错误码掐成 timeout，反而看不出失败原因
 const APIZERO_TIMEOUT_MS = 25000
 
-// 302.ai 配置（第三级，只用来补互动数据，不取图片）
-// 单价约 0.1 元/次，只在 apizero 失败时才调，所以摊下来很便宜。
-// 没配 key 就整段跳过，不影响其他链路。
-const API_302AI_KEY = process.env.API_302AI_KEY || ''
-const API_302AI_BASE = 'https://api.302ai.cn'
+// Just One API 配置（主力）
+// 一家同时给标题/正文/结构化标签/原图/作者/赞藏评/发布时间，实测比哼哼猫+apizero 两家加起来还全。
+// 鉴权是 query 参数 token=，不是 Bearer header。
+const JUSTONE_API_BASE = 'https://api.justoneapi.com'
+const JUSTONE_API_TOKEN = process.env.JUSTONE_API_TOKEN || ''
+// v2~v5 都写「包括媒体和互动指标」，v3 实测字段齐全；v6 是视频笔记专用
+const JUSTONE_NOTE_PATH = '/api/xiaohongshu/get-note-detail/v3'
+const JUSTONE_SHARE_PATH = '/api/xiaohongshu/share-url-transfer/v1'
+// 官方建议 120s，至少 60s。这里取 60s：解析跑在 after() 后台，但也不能无限占着
+const JUSTONE_TIMEOUT_MS = 60000
+// code 301 是「采集失败，请重试」，属于瞬时；其余（100 token无效 / 302 超速率 /
+// 303 超日配额 / 400 参数错 / 601 余额不足 / 602 TOKEN限额）重试没有意义
+const JUSTONE_MAX_ATTEMPTS = 3
 
 // 哼哼猫 API 配置（图文主力）
 const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
@@ -432,91 +440,167 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
- * 用 302.ai 补互动数据（第三级兜底）
- *
- * 为什么需要：apizero 的小红书通道实测成功率只有约 38%（2026-08-22 抽 8 篇，3 成 5 败），
- * 它挂了就没有作者昵称和赞藏评。哼哼猫只有一个端点、加参数也不返回互动数据（试过
- * with_stats / detail / full，返回字段恒为 text/medias/post_url/overseas），
- * 直接抓小红书页面则是 302 + noteDetailMap 为空（要登录态）。
- * 所以互动数据只能靠 302.ai —— 2026-08-12 那批记录 15/16 条有完整互动数，
- * 当时线上链路是 302.ai → 哼哼猫，而哼哼猫从不给互动数，只能是它给的。
- *
- * 只取互动数据，不取图片：图片一律用哼哼猫的 ?imageView2/2/w/0 原图档。
- * 拿不到就返回 null，退回"互动数留空 + 备注写明"的既有行为。
+ * 清洗小红书正文
+ * 去掉 #xxx[话题]# 标记和末尾裸标签，压缩行内空格但保留换行。
+ * Just One API 和哼哼猫的 desc/text 是同一种格式，所以共用这套。
  */
-async function fetchStatsFrom302ai(url: string): Promise<{
-  authorName: string
-  viewCount: number
-  likedCount: number
-  collectedCount: number
-  commentCount: number
-  publishTime: string
-} | null> {
-  if (!API_302AI_KEY) {
-    console.log('[302补数] 未配置 API_302AI_KEY，跳过')
-    return null
+function cleanXhsBody(raw: string): string {
+  let out = raw || ''
+  out = out.replace(/#[^#]+\[话题\]#/g, ' ')       // #xxx[话题]# 整段去掉
+  out = out.replace(/(\s+[@#]\S+)+\s*$/g, '')     // 末尾的 @用户 / #标签
+  out = out.replace(/[^\S\n]+/g, ' ').trim()      // 只压行内空白，保留换行
+  return out
+}
+
+/**
+ * 短链兜底解析：本地跟跳转失败时，用 Just One API 自己的端点换出完整 URL。
+ * 和笔记详情一样，code 301（采集失败请重试）是瞬时的，要退避重试。
+ */
+async function resolveNoteIdViaJustOne(shareUrl: string): Promise<string> {
+  let redirect = ''
+  for (let attempt = 1; attempt <= JUSTONE_MAX_ATTEMPTS; attempt++) {
+    const resp = await axios.get(`${JUSTONE_API_BASE}${JUSTONE_SHARE_PATH}`, {
+      params: { token: JUSTONE_API_TOKEN, shareUrl },
+      timeout: JUSTONE_TIMEOUT_MS,
+      validateStatus: () => true,
+    })
+    const code = resp.data?.code
+    if (code === 0) { redirect = resp.data?.data?.redirect_url || ''; break }
+
+    const msg = `code=${code} ${resp.data?.message || ''}`
+    if (code !== 301 || attempt === JUSTONE_MAX_ATTEMPTS) {
+      throw new Error(`短链解析失败: ${msg}`)
+    }
+    console.warn(`[JustOne] 短链解析第${attempt}次 ${msg}，退避重试`)
+    await delay(1000 * attempt)
   }
 
+  const m = redirect.match(/\/(?:explore|discovery\/item)\/([a-f0-9]+)/)
+  if (!m) throw new Error(`短链解析结果里没有 note_id: ${redirect.substring(0, 120)}`)
+  console.log('[JustOne] 短链经 API 解析到 note_id:', m[1])
+  return m[1]
+}
+
+/**
+ * 解析小红书链接（Just One API - 主力）
+ *
+ * 2026-08-22 实测（对照组 3UnKNOLDPvh 的答案早已知晓，逐项吻合）：
+ *   标题/作者/赞8/藏4/评2/发布日期/18张图 全中，正文 736 字与哼哼猫一致，
+ *   标签是 hash_tag[] 结构化数组，不用从正文正则提取。
+ *   apizero 稳定失败的 AAU8Hy9edzM 和 8Lhddcw3G8Y 它都成功。
+ *
+ * 图片有个和哼哼猫 preview_url 一样的陷阱：
+ *   images_list[].url 是 w/576 sc=PREVIEW 预览档，
+ *   url_multi_level 的 high/medium/low 三个值完全相同、也都是 w/576，名字骗人。
+ *   只有 images_list[].original 是 w/5000 sc=ORIGINAL。
+ *   签名 sign= 不覆盖 imageView2 参数，所以能把 format/webp 改成 format/jpg
+ *   直接下（实测 200），正好接上现有 .jpg 命名。
+ *   实测 original→jpg：长边中位 1800、体积中位 451KB、bpp 0.18~0.20，
+ *   比哼哼猫（0.1465）高约 1.26 倍，比 apizero 预览档（0.0089）高 20 倍。
+ *
+ * view_count 恒为 0，浏览数拿不到——这一项三家都拿不到。
+ */
+async function parseXiaohongshuWithJustOne(url: string) {
+  if (!JUSTONE_API_TOKEN) {
+    throw new Error('未配置 JUSTONE_API_TOKEN')
+  }
+
+  // note_id 优先本地跟跳转拿（免费），失败再用它的短链端点（消耗一次调用）
+  let noteId = ''
   try {
-    const { noteId } = await getFullUrlAndNoteId(url)
-    console.log('[302补数] 调用 302.ai 补互动数据, noteId:', noteId)
-
-    const resp = await axios.get(
-      `${API_302AI_BASE}/tools/xiaohongshu/app/get_note_info`,
-      {
-        params: { note_id: noteId },
-        headers: { Authorization: `Bearer ${API_302AI_KEY}` },
-        timeout: 20000,
-      }
-    )
-
-    // 兼容两种响应结构（与 app/api/xiaohongshu/parse/route.ts 保持一致）
-    const noteArr = resp.data?.data?.data
-    const note = noteArr?.[0]?.note_list?.[0] || noteArr?.[0]
-    if (!note) {
-      console.warn('[302补数] 响应里没有笔记数据，放弃补数')
-      return null
-    }
-
-    // create_time 是 unix 秒，转成 YYYY-MM-DD；已是日期串则直接截取
-    let publishTime = ''
-    const ct = note.create_time
-    if (typeof ct === 'number' && ct > 0) {
-      publishTime = new Date(ct * 1000).toISOString().slice(0, 10)
-    } else if (typeof ct === 'string' && ct) {
-      publishTime = ct.split(' ')[0].slice(0, 10)
-    }
-
-    const out = {
-      authorName: note.user?.nickname || note.user?.name || '',
-      viewCount: Number(note.view_count) || 0,
-      likedCount: Number(note.liked_count ?? note.likes) || 0,
-      collectedCount: Number(note.collected_count) || 0,
-      commentCount: Number(note.comments_count) || 0,
-      publishTime,
-    }
-    console.log('[302补数] ✅ 补到:', out.authorName, '赞', out.likedCount, '藏', out.collectedCount, '评', out.commentCount)
-    return out
+    noteId = (await getFullUrlAndNoteId(url)).noteId
   } catch (e: any) {
-    console.warn('[302补数] 失败，互动数留空:', e?.response?.status || '', (e?.message || String(e)).substring(0, 120))
-    return null
+    console.warn('[JustOne] 本地短链解析失败，改用 API 解析:', (e?.message || '').substring(0, 80))
+    noteId = await resolveNoteIdViaJustOne(url)
   }
+
+  let payload: any = null
+  for (let attempt = 1; attempt <= JUSTONE_MAX_ATTEMPTS; attempt++) {
+    console.log(`[JustOne] 调用笔记详情（第${attempt}/${JUSTONE_MAX_ATTEMPTS}次）, noteId=${noteId}`)
+    const resp = await axios.get(`${JUSTONE_API_BASE}${JUSTONE_NOTE_PATH}`, {
+      params: { token: JUSTONE_API_TOKEN, noteId },
+      timeout: JUSTONE_TIMEOUT_MS,
+      validateStatus: () => true,
+    })
+    const body = resp.data
+    const code = body?.code
+
+    if (code === 0) { payload = body; break }
+
+    const msg = `code=${code} ${body?.message || ''}`
+    console.error(`[JustOne] 业务错误（第${attempt}次）:`, msg)
+    // 301 = 采集失败请重试，瞬时；其余重试没意义
+    if (code !== 301 || attempt === JUSTONE_MAX_ATTEMPTS) {
+      throw new Error(`JustOne 失败: ${msg}`)
+    }
+    await delay(1000 * attempt)
+  }
+
+  const item = payload?.data?.[0]
+  const note = item?.note_list?.[0]
+  if (!note) throw new Error('JustOne: 响应里没有 note_list')
+
+  const title = (note.title || '').trim()
+  const content = cleanXhsBody(note.desc || '')
+  const tags = (note.hash_tag || [])
+    .map((h: any) => h?.name)
+    .filter(Boolean)
+    .map((n: string) => '#' + n)
+    .join(' ')
+
+  // 只取 original，并把 webp 换成 jpg
+  const images: string[] = (note.images_list || [])
+    .map((im: any) => im?.original || '')
+    .filter(Boolean)
+    // 实测同一个接口会按笔记/CDN 返回不同格式：对照组给的是 format/webp，
+    // 另一条给的是 format/heif。两种都要转成 jpg，否则下游按 .jpg 命名会名不副实。
+    // 签名 sign= 不覆盖 imageView2 参数，所以改格式不会让 URL 失效。
+    .map((u: string) => u.replace(/format\/(webp|heif|avif|png)/g, 'format/jpg'))
+
+  const dropped = (note.images_list || []).length - images.length
+  if (dropped > 0) {
+    console.warn(`[JustOne] ⚠️  ${dropped} 张图没有 original 字段，已跳过（绝不退到 url/url_multi_level 的预览档）`)
+  }
+
+  const authorName = item?.user?.nickname || note?.user?.nickname || ''
+  const publishTime = note.time ? new Date(note.time * 1000).toISOString().slice(0, 10) : ''
+
+  const out = {
+    title,
+    content,
+    tags,
+    images,
+    authorName,
+    viewCount: Number(note.view_count) || 0,   // 恒为 0
+    likedCount: Number(note.liked_count) || 0,
+    collectedCount: Number(note.collected_count) || 0,
+    commentCount: Number(note.comments_count) || 0,
+    sharedCount: Number(note.shared_count) || 0,
+    publishTime,
+  }
+  console.log('[JustOne] ✅ 解析成功 -', title, '| 作者', authorName,
+    '| 赞', out.likedCount, '藏', out.collectedCount, '评', out.commentCount,
+    '| 图', images.length, '张 | 正文', content.length, '字')
+  return out
 }
 
 /**
  * 组装备注栏内容
  *
  * 降级情况必须写进备注，否则记录看起来是"满的"、看不出哪里缺：
- * apizero 挂的时候作者和互动数是空的，哼哼猫挂的时候图是预览档，
+ * Just One 挂的时候作者和互动数是空的，退到 apizero 的时候图是预览档，
  * 两种都不影响记录建立，肉眼扫表格发现不了。
  *
  * 用户自己填的 remark（「模板」「采集开头」这类采集指令）永远放最前面，
  * 不能被覆盖 —— 后续 /分析笔记 要从备注里读这些指令。
+ *
+ * compareNote 是 apizero 并行对照行，取数正常时也会写，用来攒决策数据。
  */
 function buildRemark(
   apiUsed: string | undefined,
   apiError: string | undefined,
-  userRemark?: string
+  userRemark?: string,
+  compareNote?: string
 ): string {
   const parts: string[] = []
   if (userRemark) parts.push(userRemark)
@@ -524,35 +608,61 @@ function buildRemark(
   if (apiUsed === 'fallback') {
     parts.push('⚠️ 自动采集失败，请手动补充内容')
   } else if (apiUsed === 'henghengmao') {
-    parts.push('⚠️ apizero 未取到数据：作者昵称/点赞/收藏/评论/发布时间为空，需手动补充')
+    parts.push('⚠️ JustOne 未取到数据：作者昵称/点赞/收藏/评论/发布时间为空，需手动补充')
   } else if (apiUsed === 'apizero') {
-    parts.push('⚠️ 哼哼猫未取到数据：图片为 apizero 预览档（约15KB/张），画质不合格，建议重采')
-  } else if (apiUsed === 'henghengmao+302ai') {
-    // 数据是齐的（互动数由 302.ai 补的），不用提醒手填，也不往备注塞报错
-    return userRemark || ''
-  } else {
-    // henghengmao+apizero：数据完整，不往备注里加噪音
-    return userRemark || ''
+    parts.push('⚠️ JustOne 和哼哼猫都未取到：图片为 apizero 预览档（约15KB/张），画质不合格，建议重采')
   }
+  // apiUsed === 'justone' 时数据是齐的，不加警告
 
   if (apiError) parts.push(apiError)
+  if (compareNote) parts.push(compareNote)
+
   return parts.join('\n')
 }
 
 /**
- * 解析小红书链接（统一入口 - 两家并行互补）
+ * apizero 对照行（只做记录，不参与取数）
  *
- * 实测结论（2026-08-22，同一篇笔记 18 张图两家各跑一遍）：
- *   哼哼猫  —— 标题/正文/图片都对，resource_url 是 ?imageView2/2/w/0 原图档，
- *             长边中位 1800、体积中位 336KB。但完全不返回作者昵称和互动数据。
- *             单次可能返回 400 ExtractFailed，已在函数内退避重试。
- *   apizero —— stats 里有作者、点赞、收藏、评论、发布时间。
- *             但 imagelist 只给 !nd_prv_ 预览档，同样这 18 张长边中位 1357、
- *             体积中位 13.6KB，肉眼马赛克；且对 2026-08 以后分享的链接成功率为 0。
+ * 2026-08-22 用户决定：Just One API 接管取数后，apizero 仍并行跑一段时间，
+ * 把两家差异写进备注，攒够数据再决定砍不砍。
+ * 这里只用免费信息（两家响应里已有的数字），不下载图片——真要量 bpp 得下
+ * 18 张图，放在采集路径上太重。图片档位用 URL 后缀判断：apizero 恒为 !nd_prv_。
+ */
+function buildApizeroCompareNote(
+  az: { likedCount: number; collectedCount: number; commentCount: number; images: string[]; content: string } | null,
+  azErr: string,
+  chosen: { likedCount: number; collectedCount: number; commentCount: number; images: string[]; content: string } | null
+): string {
+  if (!az) {
+    return `对照 apizero: ❌ 未取到（${(azErr || '').substring(0, 60)}）`
+  }
+  const prv = az.images.some(u => u.includes('nd_prv_')) ? '预览档' : '未知档位'
+  const imgPart = `图${az.images.length}张/${prv}`
+  const textPart = `正文${az.content.length}字`
+  if (!chosen) {
+    return `对照 apizero: ✅ 赞${az.likedCount}/藏${az.collectedCount}/评${az.commentCount}，${imgPart}，${textPart}`
+  }
+  const same = az.likedCount === chosen.likedCount
+    && az.collectedCount === chosen.collectedCount
+    && az.commentCount === chosen.commentCount
+  if (same) {
+    return `对照 apizero: ✅ 互动数一致(赞${az.likedCount}/藏${az.collectedCount}/评${az.commentCount})，${imgPart}（本条${chosen.images.length}张原图），${textPart}（本条${chosen.content.length}字）`
+  }
+  return `对照 apizero: ⚠️ 互动数不一致 — apizero(赞${az.likedCount}/藏${az.collectedCount}/评${az.commentCount}) vs 本条(赞${chosen.likedCount}/藏${chosen.collectedCount}/评${chosen.commentCount})，${imgPart}，${textPart}`
+}
+
+/**
+ * 解析小红书链接（统一入口）
  *
- * 所以不再串行降级（那样两家长处会互相抵消：apizero 成功则图全糊、
- * apizero 失败才用哼哼猫则互动数全空），改为并行各取所长：
- *   标题/正文/标签/图片 ← 哼哼猫      作者/互动数/发布时间 ← apizero
+ * 三家并行，分工明确：
+ *   Just One API —— 取数主力。标题/正文/结构化标签/原图/作者/赞藏评/发布时间一次拿全。
+ *                  实测对照组逐项吻合，apizero 失败的两条它都成功，
+ *                  图片 bpp 0.18~0.20（哼哼猫 0.1465，apizero 预览档 0.0089）。
+ *   哼哼猫       —— 图文兜底。Just One 挂了才用它的图文，互动数它给不了。
+ *   apizero      —— 只做对照，不取数（用户 2026-08-22 决定，跑一段攒数据再决定砍）。
+ *                  例外：前两家都挂时才拿它的数据保底，但图是预览档，备注会标重采。
+ *
+ * 浏览数三家都拿不到，恒为 0。
  */
 async function parseXiaohongshu(url: string): Promise<{
   title: string
@@ -565,72 +675,59 @@ async function parseXiaohongshu(url: string): Promise<{
   collectedCount: number
   commentCount: number
   publishTime: string
-  apiUsed?: 'henghengmao+apizero' | 'henghengmao+302ai' | 'henghengmao' | 'apizero' | 'fallback'
+  apiUsed?: 'justone' | 'henghengmao' | 'apizero' | 'fallback'
   apiError?: string
+  compareNote?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
-  console.log('[快捷保存] 策略: 哼哼猫(图文) ‖ apizero(互动数据) 并行')
+  console.log('[快捷保存] 策略: JustOne(取数) ‖ 哼哼猫(图文兜底) ‖ apizero(仅对照)')
 
-  const [hhmSettled, azSettled] = await Promise.allSettled([
+  const [joSettled, hhmSettled, azSettled] = await Promise.allSettled([
+    parseXiaohongshuWithJustOne(url),
     parseXiaohongshuWithHenghengmao(url),
     parseXiaohongshuWithApiZero(url),
   ])
 
+  const jo  = joSettled.status  === 'fulfilled' ? joSettled.value  : null
   const hhm = hhmSettled.status === 'fulfilled' ? hhmSettled.value : null
   const az  = azSettled.status  === 'fulfilled' ? azSettled.value  : null
-  const hhmErr = hhmSettled.status === 'rejected'
-    ? (hhmSettled.reason?.message || String(hhmSettled.reason)) : ''
-  const azErr = azSettled.status === 'rejected'
-    ? (azSettled.reason?.message || String(azSettled.reason)) : ''
+  const joErr  = joSettled.status  === 'rejected' ? (joSettled.reason?.message  || String(joSettled.reason))  : ''
+  const hhmErr = hhmSettled.status === 'rejected' ? (hhmSettled.reason?.message || String(hhmSettled.reason)) : ''
+  const azErr  = azSettled.status  === 'rejected' ? (azSettled.reason?.message  || String(azSettled.reason))  : ''
 
-  // 情况1：哼哼猫成功 —— 图文一律用它（原图），互动数据能拿就拿
+  // 情况1：Just One 成功 —— 全部字段用它
+  if (jo) {
+    console.log('[快捷保存] ✅ JustOne 取数成功（图文+互动数一次拿全）')
+    return {
+      ...jo,
+      apiUsed: 'justone',
+      compareNote: buildApizeroCompareNote(az, azErr, jo),
+    }
+  }
+
+  // 情况2：Just One 挂了、哼哼猫活 —— 图文入库，互动数留空
   if (hhm) {
-    if (az) {
-      console.log('[快捷保存] ✅ 两家都成功：图文取哼哼猫(原图)，互动数据取apizero')
-      return {
-        ...hhm,
-        authorName:     az.authorName     || hhm.authorName,
-        viewCount:      az.viewCount      || hhm.viewCount,
-        likedCount:     az.likedCount     || hhm.likedCount,
-        collectedCount: az.collectedCount || hhm.collectedCount,
-        commentCount:   az.commentCount   || hhm.commentCount,
-        publishTime:    az.publishTime    || hhm.publishTime,
-        apiUsed: 'henghengmao+apizero',
-      }
-    }
-    // apizero 挂了，图文已经齐全，再让 302.ai 补一次互动数据
-    console.warn('[快捷保存] ⚠️  apizero失败，尝试用 302.ai 补互动数据:', azErr)
-    const stats302 = await fetchStatsFrom302ai(url)
-    if (stats302 && (stats302.authorName || stats302.likedCount || stats302.commentCount)) {
-      console.log('[快捷保存] ✅ 图文取哼哼猫(原图)，互动数据由 302.ai 补齐')
-      return {
-        ...hhm,
-        ...stats302,
-        apiUsed: 'henghengmao+302ai',
-        apiError: `apizero失败(已由302.ai补齐互动数): ${azErr}`,
-      }
-    }
-
-    console.warn('[快捷保存] ⚠️  302.ai 也没补到，互动数据留空待手填')
+    console.warn('[快捷保存] ⚠️  JustOne 失败，降级用哼哼猫图文，互动数留空:', joErr)
     return {
       ...hhm,
       apiUsed: 'henghengmao',
-      apiError: `apizero失败(作者/互动数留空待手填): ${azErr}`,
+      apiError: `JustOne失败(作者/互动数留空待手填): ${joErr}`,
+      compareNote: buildApizeroCompareNote(az, azErr, hhm),
     }
   }
 
-  // 情况2：哼哼猫失败、apizero成功 —— 内容齐全但图是预览档，必须在备注里标出来
+  // 情况3：前两家都挂 —— 才动用 apizero 的数据保底，但图是预览档
   if (az) {
-    console.warn('[快捷保存] ⚠️  哼哼猫失败，降级用apizero，图片是预览档:', hhmErr)
+    console.warn('[快捷保存] ⚠️  JustOne 和哼哼猫都失败，退到 apizero，图片是预览档')
     return {
       ...az,
       apiUsed: 'apizero',
-      apiError: `哼哼猫失败: ${hhmErr} | ⚠️ 图片为apizero预览档(约15KB/张)，画质不合格，建议哼哼猫恢复后重采`,
+      apiError: `JustOne: ${joErr} | 哼哼猫: ${hhmErr} | ⚠️ 图片为apizero预览档(约15KB/张)，画质不合格，建议重采`,
     }
   }
 
-  // 情况3：两家都失败 —— 兜底空记录，保证飞书至少留下链接
-  console.error('[快捷保存] ❌ 两家均失败，启用兜底保存（飞书留空记录）')
+  // 情况4：三家全挂 —— 兜底空记录，至少留下链接
+  console.error('[快捷保存] ❌ 三家均失败，启用兜底保存（飞书留空记录）')
   return {
     title: '⚠️ 待补充',
     content: '',
@@ -643,7 +740,7 @@ async function parseXiaohongshu(url: string): Promise<{
     commentCount: 0,
     publishTime: '',
     apiUsed: 'fallback',
-    apiError: `哼哼猫: ${hhmErr} | apizero: ${azErr}`,
+    apiError: `JustOne: ${joErr} | 哼哼猫: ${hhmErr} | apizero: ${azErr}`,
   }
 }
 
@@ -1147,9 +1244,9 @@ export async function POST(request: NextRequest) {
       // 所有耗时操作移到 after() 后台执行（响应发出后才开始）
       after(async () => {
         try {
-          const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
+          const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError, compareNote } = await parseXiaohongshu(url)
           // 把降级情况写入备注，方便飞书里识别（不只是兜底那一种）
-          const finalRemark = buildRemark(apiUsed, apiError, remark)
+          const finalRemark = buildRemark(apiUsed, apiError, remark, compareNote)
           const { recordId } = await saveToFeishu(
             finalAppToken, finalTableId,
             title, content, tags,
@@ -1176,10 +1273,10 @@ export async function POST(request: NextRequest) {
 
     // 同步模式（原有逻辑）
     // 1. 解析小红书链接（自动选择API）
-    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
+    const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError, compareNote } = await parseXiaohongshu(url)
 
     // 把降级情况写入备注（不只是兜底那一种）
-    const finalRemark = buildRemark(apiUsed, apiError, remark)
+    const finalRemark = buildRemark(apiUsed, apiError, remark, compareNote)
 
     // 2. 处理图片：下载并上传到飞书，获取 file_token
     const fileTokens = await processImages(images, finalAppToken)
@@ -1212,14 +1309,12 @@ export async function POST(request: NextRequest) {
 
     // 构建API使用提示
     let apiInfo = ''
-    if (apiUsed === 'henghengmao+apizero') {
-      apiInfo = '\n🎯 哼哼猫原图 + apizero互动数（完整）'
-    } else if (apiUsed === 'henghengmao+302ai') {
-      apiInfo = '\n🎯 哼哼猫原图 + 302.ai互动数（apizero挂了，已补齐）'
+    if (apiUsed === 'justone') {
+      apiInfo = '\n🎯 JustOne：原图 + 互动数（完整）'
     } else if (apiUsed === 'henghengmao') {
-      apiInfo = '\n⚠️ 哼哼猫原图，apizero挂了：作者/互动数需手填'
+      apiInfo = '\n⚠️ JustOne挂了，哼哼猫原图：作者/互动数需手填'
     } else if (apiUsed === 'apizero') {
-      apiInfo = '\n⚠️ 哼哼猫挂了，图片是apizero预览档（约15KB/张，画质不合格），建议重采'
+      apiInfo = '\n⚠️ 前两家都挂，图片是apizero预览档（约15KB/张），建议重采'
     } else if (apiUsed === 'fallback') {
       apiInfo = '\n🆘 API全部失败，已创建空记录，请到飞书手动补充内容'
     }
