@@ -426,6 +426,39 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
+ * 组装备注栏内容
+ *
+ * 降级情况必须写进备注，否则记录看起来是"满的"、看不出哪里缺：
+ * apizero 挂的时候作者和互动数是空的，哼哼猫挂的时候图是预览档，
+ * 两种都不影响记录建立，肉眼扫表格发现不了。
+ *
+ * 用户自己填的 remark（「模板」「采集开头」这类采集指令）永远放最前面，
+ * 不能被覆盖 —— 后续 /分析笔记 要从备注里读这些指令。
+ */
+function buildRemark(
+  apiUsed: string | undefined,
+  apiError: string | undefined,
+  userRemark?: string
+): string {
+  const parts: string[] = []
+  if (userRemark) parts.push(userRemark)
+
+  if (apiUsed === 'fallback') {
+    parts.push('⚠️ 自动采集失败，请手动补充内容')
+  } else if (apiUsed === 'henghengmao') {
+    parts.push('⚠️ apizero 未取到数据：作者昵称/点赞/收藏/评论/发布时间为空，需手动补充')
+  } else if (apiUsed === 'apizero') {
+    parts.push('⚠️ 哼哼猫未取到数据：图片为 apizero 预览档（约15KB/张），画质不合格，建议重采')
+  } else {
+    // henghengmao+apizero：数据完整，不往备注里加噪音
+    return userRemark || ''
+  }
+
+  if (apiError) parts.push(apiError)
+  return parts.join('\n')
+}
+
+/**
  * 解析小红书链接（统一入口 - 两家并行互补）
  *
  * 实测结论（2026-08-22，同一篇笔记 18 张图两家各跑一遍）：
@@ -1006,10 +1039,8 @@ export async function POST(request: NextRequest) {
       after(async () => {
         try {
           const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
-          // 兜底时把错误原因写入备注，方便飞书里识别
-          const finalRemark = apiUsed === 'fallback'
-            ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
-            : remark
+          // 把降级情况写入备注，方便飞书里识别（不只是兜底那一种）
+          const finalRemark = buildRemark(apiUsed, apiError, remark)
           const { recordId } = await saveToFeishu(
             finalAppToken, finalTableId,
             title, content, tags,
@@ -1038,10 +1069,8 @@ export async function POST(request: NextRequest) {
     // 1. 解析小红书链接（自动选择API）
     const { title, content, tags, images, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime, apiUsed, apiError } = await parseXiaohongshu(url)
 
-    // 兜底时把错误原因写入备注
-    const finalRemark = apiUsed === 'fallback'
-      ? `⚠️ 自动采集失败，请手动补充内容\n${apiError || ''}`
-      : remark
+    // 把降级情况写入备注（不只是兜底那一种）
+    const finalRemark = buildRemark(apiUsed, apiError, remark)
 
     // 2. 处理图片：下载并上传到飞书，获取 file_token
     const fileTokens = await processImages(images, finalAppToken)
