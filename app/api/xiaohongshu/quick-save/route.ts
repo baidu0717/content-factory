@@ -1019,14 +1019,29 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // 获取表格配置（使用个人表格）
-    const finalAppToken = appToken || process.env.FEISHU_DEFAULT_APP_TOKEN
-    const finalTableId = tableId || process.env.FEISHU_DEFAULT_TABLE_ID
-
-    if (!finalAppToken || !finalTableId) {
+    // tableId 必须显式传入，不再回落到 FEISHU_DEFAULT_TABLE_ID。
+    //
+    // 2026-08-22 踩过一次：快捷指令新加了「自发笔记」分支，但 requestBody 词典里
+    // 的 tableId 没绑到命名变量，发出来是空的。服务端静默用了默认表，18 张图全
+    // 写进了 cynid，用户在自发笔记表里等半天以为是采集失败。
+    // 写错表比当场报错难查得多——报错至少快捷指令会弹通知。
+    if (typeof tableId !== 'string' || !tableId.trim()) {
+      console.error('[快捷保存] ❌ 请求未带 tableId，拒绝执行（不再回落默认表）')
       return NextResponse.json({
         success: false,
-        message: '❌ 未配置飞书表格信息'
+        message: '❌ 请求里没有 tableId\n\n检查快捷指令 requestBody 词典：tableId 那一栏要绑「命名变量 tableId」，不能绑某个「文本」动作的输出（换分支就会变空）。\n\n服务端已不再静默使用默认表，避免笔记写错表。'
+      }, { status: 400 })
+    }
+
+    const finalTableId = tableId.trim()
+    const finalAppToken = (typeof appToken === 'string' && appToken.trim())
+      ? appToken.trim()
+      : process.env.FEISHU_DEFAULT_APP_TOKEN
+
+    if (!finalAppToken) {
+      return NextResponse.json({
+        success: false,
+        message: '❌ 请求里没有 appToken，且服务端未配置 FEISHU_DEFAULT_APP_TOKEN'
       }, { status: 400 })
     }
 
