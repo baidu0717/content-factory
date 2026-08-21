@@ -10,7 +10,13 @@ const APIZERO_API_BASE = 'https://v1.apizero.cn/api/video-parse'
 // 超时设太短会把真实错误码掐成 timeout，反而看不出失败原因
 const APIZERO_TIMEOUT_MS = 25000
 
-// 哼哼猫 API 配置（备用，免费但数据不全）
+// 302.ai 配置（第三级，只用来补互动数据，不取图片）
+// 单价约 0.1 元/次，只在 apizero 失败时才调，所以摊下来很便宜。
+// 没配 key 就整段跳过，不影响其他链路。
+const API_302AI_KEY = process.env.API_302AI_KEY || ''
+const API_302AI_BASE = 'https://api.302ai.cn'
+
+// 哼哼猫 API 配置（图文主力）
 const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
 const HENGHENGMAO_API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE || 'https://api.meowload.net/openapi/extract/post'
 
@@ -426,6 +432,78 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
 }
 
 /**
+ * 用 302.ai 补互动数据（第三级兜底）
+ *
+ * 为什么需要：apizero 的小红书通道实测成功率只有约 38%（2026-08-22 抽 8 篇，3 成 5 败），
+ * 它挂了就没有作者昵称和赞藏评。哼哼猫只有一个端点、加参数也不返回互动数据（试过
+ * with_stats / detail / full，返回字段恒为 text/medias/post_url/overseas），
+ * 直接抓小红书页面则是 302 + noteDetailMap 为空（要登录态）。
+ * 所以互动数据只能靠 302.ai —— 2026-08-12 那批记录 15/16 条有完整互动数，
+ * 当时线上链路是 302.ai → 哼哼猫，而哼哼猫从不给互动数，只能是它给的。
+ *
+ * 只取互动数据，不取图片：图片一律用哼哼猫的 ?imageView2/2/w/0 原图档。
+ * 拿不到就返回 null，退回"互动数留空 + 备注写明"的既有行为。
+ */
+async function fetchStatsFrom302ai(url: string): Promise<{
+  authorName: string
+  viewCount: number
+  likedCount: number
+  collectedCount: number
+  commentCount: number
+  publishTime: string
+} | null> {
+  if (!API_302AI_KEY) {
+    console.log('[302补数] 未配置 API_302AI_KEY，跳过')
+    return null
+  }
+
+  try {
+    const { noteId } = await getFullUrlAndNoteId(url)
+    console.log('[302补数] 调用 302.ai 补互动数据, noteId:', noteId)
+
+    const resp = await axios.get(
+      `${API_302AI_BASE}/tools/xiaohongshu/app/get_note_info`,
+      {
+        params: { note_id: noteId },
+        headers: { Authorization: `Bearer ${API_302AI_KEY}` },
+        timeout: 20000,
+      }
+    )
+
+    // 兼容两种响应结构（与 app/api/xiaohongshu/parse/route.ts 保持一致）
+    const noteArr = resp.data?.data?.data
+    const note = noteArr?.[0]?.note_list?.[0] || noteArr?.[0]
+    if (!note) {
+      console.warn('[302补数] 响应里没有笔记数据，放弃补数')
+      return null
+    }
+
+    // create_time 是 unix 秒，转成 YYYY-MM-DD；已是日期串则直接截取
+    let publishTime = ''
+    const ct = note.create_time
+    if (typeof ct === 'number' && ct > 0) {
+      publishTime = new Date(ct * 1000).toISOString().slice(0, 10)
+    } else if (typeof ct === 'string' && ct) {
+      publishTime = ct.split(' ')[0].slice(0, 10)
+    }
+
+    const out = {
+      authorName: note.user?.nickname || note.user?.name || '',
+      viewCount: Number(note.view_count) || 0,
+      likedCount: Number(note.liked_count ?? note.likes) || 0,
+      collectedCount: Number(note.collected_count) || 0,
+      commentCount: Number(note.comments_count) || 0,
+      publishTime,
+    }
+    console.log('[302补数] ✅ 补到:', out.authorName, '赞', out.likedCount, '藏', out.collectedCount, '评', out.commentCount)
+    return out
+  } catch (e: any) {
+    console.warn('[302补数] 失败，互动数留空:', e?.response?.status || '', (e?.message || String(e)).substring(0, 120))
+    return null
+  }
+}
+
+/**
  * 组装备注栏内容
  *
  * 降级情况必须写进备注，否则记录看起来是"满的"、看不出哪里缺：
@@ -449,6 +527,9 @@ function buildRemark(
     parts.push('⚠️ apizero 未取到数据：作者昵称/点赞/收藏/评论/发布时间为空，需手动补充')
   } else if (apiUsed === 'apizero') {
     parts.push('⚠️ 哼哼猫未取到数据：图片为 apizero 预览档（约15KB/张），画质不合格，建议重采')
+  } else if (apiUsed === 'henghengmao+302ai') {
+    // 数据是齐的（互动数由 302.ai 补的），不用提醒手填，也不往备注塞报错
+    return userRemark || ''
   } else {
     // henghengmao+apizero：数据完整，不往备注里加噪音
     return userRemark || ''
@@ -484,7 +565,7 @@ async function parseXiaohongshu(url: string): Promise<{
   collectedCount: number
   commentCount: number
   publishTime: string
-  apiUsed?: 'henghengmao+apizero' | 'henghengmao' | 'apizero' | 'fallback'
+  apiUsed?: 'henghengmao+apizero' | 'henghengmao+302ai' | 'henghengmao' | 'apizero' | 'fallback'
   apiError?: string
 }> {
   console.log('[快捷保存] 开始解析链接:', url)
@@ -517,7 +598,20 @@ async function parseXiaohongshu(url: string): Promise<{
         apiUsed: 'henghengmao+apizero',
       }
     }
-    console.warn('[快捷保存] ⚠️  apizero失败，图文已齐全，互动数据留空待手填:', azErr)
+    // apizero 挂了，图文已经齐全，再让 302.ai 补一次互动数据
+    console.warn('[快捷保存] ⚠️  apizero失败，尝试用 302.ai 补互动数据:', azErr)
+    const stats302 = await fetchStatsFrom302ai(url)
+    if (stats302 && (stats302.authorName || stats302.likedCount || stats302.commentCount)) {
+      console.log('[快捷保存] ✅ 图文取哼哼猫(原图)，互动数据由 302.ai 补齐')
+      return {
+        ...hhm,
+        ...stats302,
+        apiUsed: 'henghengmao+302ai',
+        apiError: `apizero失败(已由302.ai补齐互动数): ${azErr}`,
+      }
+    }
+
+    console.warn('[快捷保存] ⚠️  302.ai 也没补到，互动数据留空待手填')
     return {
       ...hhm,
       apiUsed: 'henghengmao',
@@ -1120,6 +1214,8 @@ export async function POST(request: NextRequest) {
     let apiInfo = ''
     if (apiUsed === 'henghengmao+apizero') {
       apiInfo = '\n🎯 哼哼猫原图 + apizero互动数（完整）'
+    } else if (apiUsed === 'henghengmao+302ai') {
+      apiInfo = '\n🎯 哼哼猫原图 + 302.ai互动数（apizero挂了，已补齐）'
     } else if (apiUsed === 'henghengmao') {
       apiInfo = '\n⚠️ 哼哼猫原图，apizero挂了：作者/互动数需手填'
     } else if (apiUsed === 'apizero') {
