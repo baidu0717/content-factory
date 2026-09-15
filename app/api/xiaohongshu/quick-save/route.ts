@@ -9,6 +9,8 @@ const APIZERO_API_BASE = 'https://v1.apizero.cn/api/video-parse'
 // apizero 单次请求超时：它自身失败要烧 9~13 秒（内部代理竞速两轮），
 // 超时设太短会把真实错误码掐成 timeout，反而看不出失败原因
 const APIZERO_TIMEOUT_MS = 25000
+// 4 次退避（1s/2s/4s）。哼哼猫已停用，整条链路只剩它，值得多等几秒换可用节点
+const APIZERO_MAX_ATTEMPTS = 4
 
 // Just One API 配置（主力）
 // 一家同时给标题/正文/结构化标签/原图/作者/赞藏评/发布时间，实测比哼哼猫+apizero 两家加起来还全。
@@ -110,8 +112,28 @@ async function getFullUrlAndNoteId(shortUrl: string): Promise<{ fullUrl: string;
  * 无响应（超时、网络错误）不重试：再等一个 25 秒也大概率还是拿不到
  */
 function isApiZeroRetryable(body: any): boolean {
-  if (!body || body.code !== 5020) return false
-  return body?.data?.reason !== 'note_unavailable'
+  if (!body) return false
+  // 官方错误码表（2026-09-16 从 apizero.cn/aidocs/video-parse 抄来的）：
+  //   4000 参数错 / 4011 Key无效 / 4013 Key暂停 / 4014 IP不在白名单 / 4015 需要Key
+  //   4022 余额不足 / 4029 QPS超限 / 4030 今日免费额度用完
+  //   4040 接口下线 / 4041 接口不存在 / 5000 服务器内部错
+  //   5020 上游暂时不可用 / 5021 上游返回格式异常 / 5030 暂无可用节点
+  // 只有「上游/限速」这几类重试才有意义，鉴权和额度类重试多少次都一样。
+  if (body.code === 4029) return true                       // QPS 超了，退避后能过
+  if (![5020, 5021, 5030].includes(body.code)) return false // 其余一律不重试
+  return body?.data?.reason !== 'note_unavailable'          // 笔记本身没了，重试无意义
+}
+
+/**
+ * 这次失败是不是「暂时性」的——决定要不要往飞书写兜底空记录。
+ *
+ * 2026-09-16 加：上游故障时不该建空记录。
+ * 当天 apizero 的小红书通道整体挂掉（持续返 5020 empty_pool，连它自己文档里的
+ * 示例笔记都解析不了），每试一次就往飞书塞一条「⚠️ 待补充」，用户手动删了 10 条。
+ * 这类故障过一阵就好，正确做法是让用户稍后重试，而不是留一条要人工清理的垃圾。
+ */
+function isTransientFailure(errMsg: string): boolean {
+  return /\b(5020|5021|5030|4029)\b/.test(errMsg || '')
 }
 
 /**
@@ -125,12 +147,18 @@ async function parseXiaohongshuWithApiZero(url: string) {
 
   console.log('[快捷保存-apizero] 调用 apizero API...')
 
-  // 最多两次：上游抓取失败换一轮代理常常就成了，短链无需重新解析
+  // 2026-09-16 改：4 次退避（1s/2s/4s），原来是 2 次固定 1 秒。
+  // 上游代理池是一阵一阵的，多等几秒常常就换到可用节点了；哼哼猫停用后时间预算也腾出来了。
   let data: any
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= APIZERO_MAX_ATTEMPTS; attempt++) {
     try {
       const axiosResp = await axios.get(APIZERO_API_BASE, {
-        params: { url: fullUrl, flat: 1, key: APIZERO_API_KEY },
+        // 鉴权用官方推荐的 Bearer 头（query 的 key= 只是兼容写法，且仅对
+        // sk_live_/sk_test_/sk_stag_ 形态生效）。2026-09-16 实测两种等价，从推荐的。
+        headers: { Authorization: `Bearer ${APIZERO_API_KEY}` },
+        // flat=2：单层 data，type 全平台只出 视频 | 图集 | 实况图集（文档 v1.3 起推荐）。
+        // 下面 `d.type === '视频'` 的判断在 flat=2 下依然成立，图集/实况图集都走 imagelist。
+        params: { url: fullUrl, flat: 2 },
         timeout: APIZERO_TIMEOUT_MS
       })
       data = axiosResp.data
@@ -139,9 +167,10 @@ async function parseXiaohongshuWithApiZero(url: string) {
       const status = axiosErr?.response?.status || 'timeout'
       const errBody = JSON.stringify(body || {}).substring(0, 200)
       console.error(`[快捷保存-apizero] API错误（第${attempt}次）:`, status, errBody)
-      if (attempt === 1 && isApiZeroRetryable(body)) {
-        console.warn('[快捷保存-apizero] 上游抓取失败，1秒后重试一次...')
-        await new Promise(resolve => setTimeout(resolve, 1000))
+      if (attempt < APIZERO_MAX_ATTEMPTS && isApiZeroRetryable(body)) {
+        const wait = 1000 * Math.pow(2, attempt - 1)
+        console.warn(`[快捷保存-apizero] 上游抓取失败，${wait}ms 后重试（${attempt}/${APIZERO_MAX_ATTEMPTS}）...`)
+        await new Promise(resolve => setTimeout(resolve, wait))
         continue
       }
       throw new Error(`apizero API请求失败: HTTP ${status} ${errBody}`)
@@ -150,9 +179,10 @@ async function parseXiaohongshuWithApiZero(url: string) {
     // HTTP 200 但业务码非 0
     if (data.code !== 0) {
       console.error(`[快捷保存-apizero] 业务错误（第${attempt}次）:`, data.code, data.msg)
-      if (attempt === 1 && isApiZeroRetryable(data)) {
-        console.warn('[快捷保存-apizero] 上游抓取失败，1秒后重试一次...')
-        await new Promise(resolve => setTimeout(resolve, 1000))
+      if (attempt < APIZERO_MAX_ATTEMPTS && isApiZeroRetryable(data)) {
+        const wait = 1000 * Math.pow(2, attempt - 1)
+        console.warn(`[快捷保存-apizero] 上游抓取失败，${wait}ms 后重试（${attempt}/${APIZERO_MAX_ATTEMPTS}）...`)
+        await new Promise(resolve => setTimeout(resolve, wait))
         continue
       }
       throw new Error(`apizero API错误: ${data.msg || JSON.stringify(data).substring(0, 200)}`)
@@ -935,8 +965,24 @@ async function parseXiaohongshu(url: string): Promise<{
     }
   }
 
-  // ── 情况4：全挂 —— 兜底空记录，至少留下链接 ──
-  console.error('[快捷保存] ❌ 三家均失败，启用兜底保存（飞书留空记录）')
+  // ── 情况4：全挂 ──
+  // 先分一下是「暂时性故障」还是「这条笔记真的采不到」，两者处理方式不同：
+  //   暂时性（5020 上游不可用 / 5021 格式异常 / 5030 无可用节点 / 4029 QPS）
+  //     → 直接抛错，让上层提示「稍后重试」。**不写兜底空记录。**
+  //   其余（笔记被删、鉴权失效、参数错等）
+  //     → 建兜底记录，至少把链接留下来，人工补内容。
+  //
+  // 2026-09-16 加这个分叉的原因：当天 apizero 小红书通道整体挂了，每试一次就往飞书
+  // 塞一条「⚠️ 待补充」，用户手动删了 10 条。上游故障过一阵就好，留垃圾记录没有意义。
+  if (isTransientFailure(azErr) || isTransientFailure(hhmErr)) {
+    console.error('[快捷保存] ⏸ 上游暂时不可用，不建兜底记录，让用户稍后重试')
+    throw new Error(
+      `UPSTREAM_UNAVAILABLE: 采集服务上游暂时不可用，请过几分钟再试。` +
+      `（未写入飞书，避免产生需要手动清理的空记录）\n详情: apizero: ${azErr.substring(0, 160)}`
+    )
+  }
+
+  console.error('[快捷保存] ❌ 三家均失败且非暂时性故障，启用兜底保存（飞书留空记录）')
   return {
     title: '⚠️ 待补充',
     content: '',
@@ -1575,10 +1621,26 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const duration = Date.now() - startTime
     console.error('[快捷保存] 错误:', error)
+    const msg = error instanceof Error ? error.message : '未知错误'
+
+    // 上游暂时不可用：这不是你的操作问题，也没有产生任何飞书记录。
+    // 单独给一条人话提示，别让手机端看到一串错误码就以为要手动补内容。
+    if (msg.startsWith('UPSTREAM_UNAVAILABLE')) {
+      return NextResponse.json({
+        success: false,
+        transient: true,
+        message:
+          `⏸ 采集服务上游暂时不可用，这条没采到\n\n` +
+          `✅ 飞书里没有留下空记录，不用手动清理\n` +
+          `💡 过几分钟直接重跑快捷指令即可（链接还在剪贴板）\n\n` +
+          `⏱️ 耗时${duration}ms`,
+        detail: msg
+      }, { status: 503 })
+    }
 
     return NextResponse.json({
       success: false,
-      message: `❌ 发生错误: ${error instanceof Error ? error.message : '未知错误'}`
+      message: `❌ 发生错误: ${msg}`
     }, { status: 500 })
   }
 }
