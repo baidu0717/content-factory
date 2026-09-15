@@ -139,58 +139,8 @@ export async function getUserAccessToken(): Promise<string> {
   // 创建刷新Promise并加锁
   userTokenRefreshPromise = (async () => {
     try {
-      // 获取当前 refresh_token（优先 KV，降级环境变量）
-      const currentRefreshToken = await getCurrentRefreshToken()
-      if (!currentRefreshToken) {
-        throw new Error('未配置 FEISHU_REFRESH_TOKEN（请检查 KV 或环境变量）')
-      }
-
-      // 第一步：获取 app_access_token
-      const appAccessToken = await getAppAccessToken()
-
-      // 第二步：使用 refresh_token 刷新 user_access_token
-      const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/refresh_access_token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${appAccessToken}`
-        },
-        body: JSON.stringify({
-          grant_type: 'refresh_token',
-          refresh_token: currentRefreshToken
-        })
-      })
-
-      const data = await response.json()
-
-      if (data.code !== 0) {
-        console.error('[飞书Auth] 刷新user_access_token失败:', data)
-
-        // 检查是否是 refresh_token 过期或无效
-        if (data.code === 10012 || data.code === 99991400 || data.code === 20038 || data.msg?.includes('invalid') || data.msg?.includes('expired') || data.msg?.includes('not found')) {
-          const errorMsg = `Refresh Token 已过期或无效，请重新授权。访问: ${process.env.NEXT_PUBLIC_APP_URL}/feishu-auth`
-          console.error('[飞书Auth] ❌', errorMsg)
-          throw new Error(errorMsg)
-        }
-
-        throw new Error(`刷新token失败: ${data.msg || data.message || JSON.stringify(data)}`)
-      }
-
-      const { access_token, expires_in, refresh_token: newRefreshToken } = data.data
-
-      // 缓存到内存
-      cachedUserAccessToken = access_token
-      userTokenExpireTime = now + expires_in * 1000
-
-      console.log('[飞书Auth] user_access_token 刷新成功，有效期:', expires_in, '秒')
-
-    // 获得新的 refresh_token 时，立即存入 KV（所有实例下次读取即生效）
-    if (newRefreshToken && newRefreshToken !== currentRefreshToken) {
-      await saveRefreshToken(newRefreshToken)
-    }
-
+      const access_token = await doRefreshUserAccessToken(now, /* isRetry */ false)
       return access_token
-
     } catch (error) {
       console.error('[飞书Auth] 刷新user_access_token失败:', error)
       throw error
@@ -202,6 +152,75 @@ export async function getUserAccessToken(): Promise<string> {
 
   // 返回刷新Promise（其他并发请求会等待这个Promise）
   return await userTokenRefreshPromise
+}
+
+/**
+ * 执行一次 refresh_token → user_access_token 的刷新请求
+ * isRetry=true 时表示这是竞态重试（已重新从 KV 读取过 refresh_token）
+ */
+async function doRefreshUserAccessToken(now: number, isRetry: boolean): Promise<string> {
+  // 获取当前 refresh_token（优先 KV，降级环境变量）
+  const currentRefreshToken = await getCurrentRefreshToken()
+  if (!currentRefreshToken) {
+    throw new Error('未配置 FEISHU_REFRESH_TOKEN（请检查 KV 或环境变量）')
+  }
+
+  // 第一步：获取 app_access_token
+  const appAccessToken = await getAppAccessToken()
+
+  // 第二步：使用 refresh_token 刷新 user_access_token
+  const response = await fetch(`${FEISHU_API_URL}/authen/v1/oidc/refresh_access_token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${appAccessToken}`
+    },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: currentRefreshToken
+    })
+  })
+
+  const data = await response.json()
+
+  if (data.code !== 0) {
+    console.error('[飞书Auth] 刷新user_access_token失败:', data)
+
+    // 检查是否是"refresh_token 已被使用"（并发竞态：另一个请求刚抢先刷新成功）
+    const isAlreadyUsed = data.code === 20038 || data.msg?.includes('already been used') || data.msg?.includes('may have been used')
+
+    if (isAlreadyUsed && !isRetry) {
+      console.warn('[飞书Auth] ⚠️ 检测到并发竞态（refresh_token 已被使用），清空内存缓存并重试一次...')
+      // 清空内存缓存，强制下次读绕过内存，重新读 KV
+      cachedRefreshToken = null
+      // 重新从 KV 读取最新 token（大概率是并发赢家写入的新 token），并重试一次刷新
+      return await doRefreshUserAccessToken(now, /* isRetry */ true)
+    }
+
+    // 检查是否是 refresh_token 过期或无效（真正过期，而非并发竞态）
+    if (data.code === 10012 || data.code === 99991400 || isAlreadyUsed || data.msg?.includes('invalid') || data.msg?.includes('expired') || data.msg?.includes('not found')) {
+      const errorMsg = `Refresh Token 已过期或无效，请重新授权。访问: ${process.env.NEXT_PUBLIC_APP_URL}/feishu-auth`
+      console.error('[飞书Auth] ❌', errorMsg)
+      throw new Error(errorMsg)
+    }
+
+    throw new Error(`刷新token失败: ${data.msg || data.message || JSON.stringify(data)}`)
+  }
+
+  const { access_token, expires_in, refresh_token: newRefreshToken } = data.data
+
+  // 缓存到内存
+  cachedUserAccessToken = access_token
+  userTokenExpireTime = now + expires_in * 1000
+
+  console.log('[飞书Auth] user_access_token 刷新成功，有效期:', expires_in, '秒')
+
+  // 获得新的 refresh_token 时，立即存入 KV（所有实例下次读取即生效）
+  if (newRefreshToken && newRefreshToken !== currentRefreshToken) {
+    await saveRefreshToken(newRefreshToken)
+  }
+
+  return access_token
 }
 
 /**

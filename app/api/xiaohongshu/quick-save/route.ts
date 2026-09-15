@@ -24,7 +24,16 @@ const JUSTONE_TIMEOUT_MS = 60000
 // 303 超日配额 / 400 参数错 / 601 余额不足 / 602 TOKEN限额）重试没有意义
 const JUSTONE_MAX_ATTEMPTS = 3
 
-// 哼哼猫 API 配置（图文主力）
+// 哼哼猫 API 配置
+//
+// ⚠️ 2026-09-16 用户决定停用。原因：
+//   服务端返 HTTP 522（连续重试 4 次全失败），而它在并行链里是最慢的一环——
+//   实测一次采集耗时 201 秒，其中绝大部分耗在等它重试超时。
+//   apizero 单家已经能出「图文 + 互动数」（走下面「情况2」分支），
+//   图片经 toOriginalImageUrl 拿无签名原图，实测 9/9 成功、bpp 0.108~0.166。
+//
+// 想恢复：把 HENGHENGMAO_ENABLED 改回 true 即可，解析函数原样保留没删。
+const HENGHENGMAO_ENABLED = false
 const HENGHENGMAO_API_KEY = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY || ''
 const HENGHENGMAO_API_URL = process.env.NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE || 'https://api.meowload.net/openapi/extract/post'
 
@@ -464,18 +473,36 @@ async function parseXiaohongshuWithHenghengmao(url: string) {
  * （带 notes_pre_post/ 和不带），所以不去动它，原样放过最稳。
  */
 function toOriginalImageUrl(url: string): string {
-  if (!url || !url.includes('!nd_')) return url   // 只处理 apizero 那种形态
+  if (!url) return url
+  if (url.includes('imageView2')) return url      // 哼哼猫：已经是原图档，别动
 
   try {
     const u = new URL(url)
-    // 路径形如 /<时间戳>/<hash>/notes_pre_post/<id>!nd_prv_wlteh_jpg_3
-    // 丢掉前两段签名，保留其余目录 + 图片ID，去掉 ! 之后的档位后缀
     const segs = u.pathname.replace(/^\//, '').split('/')
-    if (segs.length < 3) return url
-    const kept = segs.slice(2)
-    kept[kept.length - 1] = kept[kept.length - 1].split('!')[0]
-    if (!kept[kept.length - 1]) return url
-    return `https://ci.xiaohongshu.com/${kept.join('/')}?imageView2/2/w/0/format/jpg`
+
+    // 形态一（2026-08 及以前的 apizero）：
+    //   /<签名时间戳>/<签名hash>/notes_pre_post/<图片ID>!nd_prv_wlteh_jpg_3
+    // 丢掉前两段签名，保留其余目录 + 图片ID，去掉 ! 之后的档位后缀
+    if (url.includes('!nd_')) {
+      if (segs.length < 3) return url
+      const kept = segs.slice(2)
+      kept[kept.length - 1] = kept[kept.length - 1].split('!')[0]
+      if (!kept[kept.length - 1]) return url
+      return `https://ci.xiaohongshu.com/${kept.join('/')}?imageView2/2/w/0/format/jpg`
+    }
+
+    // 形态二（2026-09-16 实测 apizero 改成了这个）：
+    //   https://sns-img-hw.xhscdn.com/<图片ID>        ← 裸 ID，无路径前缀、无档位后缀
+    // 这种 URL 直接访问返回 404（download origin failed because resource not found），
+    // 必须补回 notes_pre_post/ 前缀才拿得到图。实测 9/9 全部成功，
+    // 长边 1448~1660、体积 205~334KB、bpp 0.108~0.166，与哼哼猫同档。
+    // ⚠️ 旧版这里写的是 `if (!url.includes('!nd_')) return url`，
+    //    新格式不含 !nd_ 被原样放过，导致 9/9 图片下载失败。
+    if (segs.length === 1 && /^[a-z0-9]{20,}$/i.test(segs[0])) {
+      return `https://ci.xiaohongshu.com/notes_pre_post/${segs[0]}?imageView2/2/w/0/format/jpg`
+    }
+
+    return url
   } catch {
     return url
   }
@@ -834,7 +861,9 @@ async function parseXiaohongshu(url: string): Promise<{
   }
 
   const [hhmSettled, azSettled] = await Promise.allSettled([
-    parseXiaohongshuWithHenghengmao(apiUrl),
+    HENGHENGMAO_ENABLED
+      ? parseXiaohongshuWithHenghengmao(apiUrl)
+      : Promise.reject(new Error('哼哼猫已停用（2026-09-16，HTTP 522 且拖慢整条链路）')),
     parseXiaohongshuWithApiZero(apiUrl),
   ])
   const hhm = hhmSettled.status === 'fulfilled' ? hhmSettled.value : null
