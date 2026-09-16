@@ -1490,7 +1490,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         message: '❌ 请提供小红书链接'
-      }, { status: 400 })
+      }, { status: 200 })   // 200：快捷指令读不到非 2xx 的响应体，见文件末尾 catch 处说明
     }
 
     // tableId 必须显式传入，不再回落到 FEISHU_DEFAULT_TABLE_ID。
@@ -1498,13 +1498,16 @@ export async function POST(request: NextRequest) {
     // 2026-08-22 踩过一次：快捷指令新加了「自发笔记」分支，但 requestBody 词典里
     // 的 tableId 没绑到命名变量，发出来是空的。服务端静默用了默认表，18 张图全
     // 写进了 cynid，用户在自发笔记表里等半天以为是采集失败。
-    // 写错表比当场报错难查得多——报错至少快捷指令会弹通知。
+    // 写错表比当场报错难查得多——报错至少用户当场能看见。
+    // ⚠️ 2026-09-17 修正：原注释写的是「报错至少快捷指令会弹通知」，这个假设是错的。
+    //    快捷指令碰到非 2xx 只会报「网络已中断」，下面这段提示一个字都显示不出来。
+    //    所以状态码改成 200，靠 success:false 区分。
     if (typeof tableId !== 'string' || !tableId.trim()) {
       console.error('[快捷保存] ❌ 请求未带 tableId，拒绝执行（不再回落默认表）')
       return NextResponse.json({
         success: false,
         message: '❌ 请求里没有 tableId\n\n检查快捷指令 requestBody 词典：tableId 那一栏要绑「命名变量 tableId」，不能绑某个「文本」动作的输出（换分支就会变空）。\n\n服务端已不再静默使用默认表，避免笔记写错表。'
-      }, { status: 400 })
+      }, { status: 200 })   // 200：快捷指令读不到非 2xx 的响应体，见文件末尾 catch 处说明
     }
 
     const finalTableId = tableId.trim()
@@ -1516,7 +1519,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         message: '❌ 请求里没有 appToken，且服务端未配置 FEISHU_DEFAULT_APP_TOKEN'
-      }, { status: 400 })
+      }, { status: 200 })   // 200：快捷指令读不到非 2xx 的响应体，见文件末尾 catch 处说明
     }
 
     // 异步模式：立即返回响应，所有耗时操作（解析+保存+图片）全部在后台执行
@@ -1649,6 +1652,18 @@ export async function POST(request: NextRequest) {
     console.error('[快捷保存] 错误:', error)
     const msg = error instanceof Error ? error.message : '未知错误'
 
+    // ⚠️ 下面这几种「已知失败」一律返 HTTP 200，靠响应体里的 success:false 区分。
+    //
+    // 2026-09-17 踩到的坑：原本给配置错误返 502、暂时性故障返 503，语义上更准确，
+    // 但 iOS 快捷指令的「获取 URL 内容」碰到非 2xx 会直接报「网络已中断」，
+    // **根本不显示响应体**——精心写的人话提示用户一个字都看不到。
+    //
+    // 而且这套接口本来就是「HTTP 200 + success 字段」的风格（参数错那处是个例外），
+    // 引入 502/503 反而破坏了一致性。调用方是手机快捷指令，不是标准 HTTP 客户端，
+    // 按调用方的能力来设计，不按 REST 教科书。
+    //
+    // 真正的意外错误（最下面那个 return）仍然返 500——那种情况用户也没法自助处理。
+
     // 上游暂时不可用：这不是你的操作问题，也没有产生任何飞书记录。
     // 单独给一条人话提示，别让手机端看到一串错误码就以为要手动补内容。
     // 密钥/额度问题：去后台改配置，不是补内容。也没有产生飞书记录。
@@ -1663,7 +1678,7 @@ export async function POST(request: NextRequest) {
           `   然后更新 Vercel 环境变量 APIZERO_API_KEY\n\n` +
           `⏱️ 耗时${duration}ms`,
         detail: msg
-      }, { status: 502 })
+      }, { status: 200 })   // ⚠️ 必须 200，见下方说明
     }
 
     if (msg.startsWith('UPSTREAM_UNAVAILABLE')) {
@@ -1676,7 +1691,7 @@ export async function POST(request: NextRequest) {
           `💡 过几分钟直接重跑快捷指令即可（链接还在剪贴板）\n\n` +
           `⏱️ 耗时${duration}ms`,
         detail: msg
-      }, { status: 503 })
+      }, { status: 200 })   // ⚠️ 必须 200，见下方说明
     }
 
     return NextResponse.json({
