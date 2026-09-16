@@ -8,9 +8,24 @@ const APIZERO_API_BASE = 'https://v1.apizero.cn/api/video-parse'
 
 // apizero 单次请求超时：它自身失败要烧 9~13 秒（内部代理竞速两轮），
 // 超时设太短会把真实错误码掐成 timeout，反而看不出失败原因
-const APIZERO_TIMEOUT_MS = 25000
-// 4 次退避（1s/2s/4s）。哼哼猫已停用，整条链路只剩它，值得多等几秒换可用节点
-const APIZERO_MAX_ATTEMPTS = 4
+// 8 秒（原 25 秒）。同步模式下 Vercel 函数上限是 10 秒，25 秒的单次超时
+// 本来就不可能等到——超时前函数已经被平台掐断了。
+const APIZERO_TIMEOUT_MS = 8000
+// 最多 2 次（间隔 1 秒）。
+//
+// ⚠️ 2026-09-17 从 4 次调回 2 次。昨天加到 4 次的理由是「哼哼猫停用后时间预算腾出来了」，
+// 但那个判断基于一个错误的前提——我以为失败是「上游代理池整体空了」，重试能撞窗口。
+//
+// 实际是**按笔记限流**：同一条笔记被反复打就会被针对性拦截。今天的数据很整齐——
+// 每条没打过的新笔记第一次调用都成功，反复打之后就持续 empty_pool。
+// （我还用连打同一条笔记 30 次的探针「证明」了池子是空的，等于自己制造了证据。）
+//
+// 在这个前提下多重试是有害的：用户按一次快捷指令 = 对同一条笔记连打 4 次，
+// 正好是触发风控的做法，而且后面几次几乎不可能成功。
+//
+// 有效的做法是「过几分钟手动重跑」，不是「同一秒内多打几次」。
+// 失败的代价现在已经很低（不留垃圾记录、提示看得见），所以把重试的活交回给人。
+const APIZERO_MAX_ATTEMPTS = 2
 
 // Just One API 配置（主力）
 // 一家同时给标题/正文/结构化标签/原图/作者/赞藏评/发布时间，实测比哼哼猫+apizero 两家加起来还全。
@@ -1479,9 +1494,22 @@ export async function POST(request: NextRequest) {
       // iOS 快捷指令有时会在字符串值内嵌入原始控制字符（如 URL 或 remark 末尾的换行等）
       body = JSON.parse(sanitizeJsonControlChars(rawBody))
     }
-    const { url, appToken, tableId, async: isAsync, remark } = body  // 新增：remark
+    const { url, appToken, tableId, async: rawAsync, remark } = body
 
-    console.log('[快捷保存] 收到请求:', { url, appToken, tableId, async: isAsync, remark })
+    // 异步是默认模式，只有显式传 false / "false" 才走同步。
+    //
+    // 2026-09-17 改。原来是 `async: isAsync` 直接取值，没传就走同步——而同步模式
+    // 要 9~20 秒才返回，快捷指令 3-5 秒就报「网络已中断」，用户根本拿不到结果。
+    //
+    // 而「没传」几乎都不是有意的：快捷指令 requestBody 词典里那一项绑错了变量
+    // （绑成某个「文本」动作的输出，换个分支就变空），发出来就是 undefined。
+    // 这个坑在 tableId 上已经踩过一次（见下方注释），不该在 async 上再踩一次。
+    //
+    // 服务端实测：异步 1.15 秒返回，同步 9~20 秒。对手机端来说异步是唯一可用的模式，
+    // 所以把它变成默认值，而不是让调用方记得传。
+    const isAsync = rawAsync !== false && rawAsync !== 'false'
+
+    console.log('[快捷保存] 收到请求:', { url, appToken, tableId, rawAsync, 实际模式: isAsync ? '异步' : '同步', remark })
     console.log('[快捷保存] 环境变量 DEFAULT_APP_TOKEN:', process.env.FEISHU_DEFAULT_APP_TOKEN)
     console.log('[快捷保存] 环境变量 DEFAULT_TABLE_ID:', process.env.FEISHU_DEFAULT_TABLE_ID)
 
@@ -1557,8 +1585,13 @@ export async function POST(request: NextRequest) {
       // 立即返回，iOS 不等待
       return NextResponse.json({
         success: true,
-        message: `⏳ 正在后台保存到飞书，稍后查看表格...`,
-        data: { async: true }
+        // 回显收到的 async 原值：快捷指令那头看得见，能自己确认词典绑对没有。
+        // rawAsync=undefined 说明这一项没传到（词典绑错变量），虽然现在不影响
+        // 功能（默认就走异步），但值得顺手修掉。
+        message: rawAsync === undefined
+          ? `⏳ 正在后台保存到飞书，稍后查看表格...\n\n⚠️ 请求里没带 async（已按默认异步执行）\n   快捷指令 requestBody 词典里 async 那一项可能绑错了变量`
+          : `⏳ 正在后台保存到飞书，稍后查看表格...`,
+        data: { async: true, receivedAsync: rawAsync ?? null }
       })
     }
 
