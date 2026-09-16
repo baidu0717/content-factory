@@ -1482,6 +1482,17 @@ function sanitizeJsonControlChars(raw: string): string {
   return result
 }
 
+// Vercel 函数最长执行时间（秒）。
+//
+// ⚠️ 2026-09-17 加。此前没设，用的是 Hobby 默认的 10 秒——而 after() 里的后台任务
+// 时间是**算进函数总时长**的：解析（最多 17 秒）+ 下载 9 张图 + 逐张上传飞书 +
+// 写记录，远超 10 秒，函数在中途被平台掐断，飞书里什么都没写进去。
+// 而异步模式的响应「⏳ 正在后台保存」在活干完之前就发出去了，所以用户看到
+// 「采集成功」但表里没有记录——两件事对不上，最难查的那种。
+//
+// Hobby 计划上限是 60 秒，这里取满。图多的笔记（18 张）实测要 40 秒以上。
+export const maxDuration = 60
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
