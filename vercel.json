@@ -2,7 +2,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "regions": ["iad1"],
+  "regions": ["hkg1"],
+  "_regions_note": "2026-09-17 从 iad1(美东) 改为 hkg1(香港)。本服务的全部外部依赖都在国内——apizero(v1.apizero.cn)、小红书图片CDN(ci.xiaohongshu.com)、飞书(open.feishu.cn)。函数放美东意味着每张图片、每次解析都要跨太平洋往返，实测：同一条链接直连(杭州)成功、走 Vercel(美东) 60 秒超时。香港到这三个服务是数十毫秒级。注意：这只是缓解，*.vercel.app 域名在国内仍需代理才能访问，根治要迁到国内云(需备案)。",
   "env": {
     "NEXT_PUBLIC_APP_URL": "https://$VERCEL_URL"
   },

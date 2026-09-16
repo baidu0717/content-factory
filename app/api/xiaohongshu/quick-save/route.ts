@@ -1156,7 +1156,16 @@ async function processImageWithRetry(
 
     // 1. 下载图片（最多重试10次，提高成功率）
     let imageBuffer: Buffer | null = null
-    const MAX_RETRIES = 10 // 从5次增加到10次
+    // 3 次，退避 1s/2s/3s，单张最坏约 6 秒。
+    //
+    // ⚠️ 2026-09-17 从 10 次砍到 3 次。原来是「10 次 × 退避最多 10 秒」，
+    // 单张图最坏能吃掉 2+3+4+5+6+7+8+9+10+10 ≈ 64 秒——比整个函数的
+    // maxDuration(60s) 还长，一张图就能把预算耗光，后面的图和写记录全都执行不到。
+    // 实测就踩到了：同步模式跑满 60 秒被平台掐断，飞书里一条记录都没留下。
+    //
+    // 而且图片下载失败大多不是重试能解决的（URL 格式不对、资源不存在），
+    // 真正瞬时的网络抖动 3 次足够覆盖。
+    const MAX_RETRIES = 3
     for (let retry = 0; retry < MAX_RETRIES; retry++) {
       try {
         imageBuffer = await downloadImage(imageUrl, retry)
@@ -1168,7 +1177,7 @@ async function processImageWithRetry(
 
         if (retry < MAX_RETRIES - 1) {
           // 渐进式重试延迟：第1次等2秒，第2次等3秒，第3次等5秒...
-          const delayTime = Math.min(2000 + retry * 1000, 10000) // 最多等10秒
+          const delayTime = Math.min(1000 + retry * 1000, 3000) // 1s/2s/3s，最多等3秒
           console.log(`[图片处理] 图片 ${index + 1} 下载失败(${errorMsg})，等待${delayTime/1000}秒后重试 (${retry + 1}/${MAX_RETRIES})...`)
           await delay(delayTime)
         } else {
@@ -1671,17 +1680,24 @@ export async function POST(request: NextRequest) {
     // 把降级情况写入备注（不只是兜底那一种）
     const finalRemark = buildRemark(apiUsed, apiError, remark, compareNote, dupNote)
 
-    // 2. 处理图片：下载并上传到飞书，获取 file_token
-    const fileTokens = await processImages(images, finalAppToken)
-
-    // 3. 保存到飞书表格（使用 file_token）
-    await saveToFeishu(
+    // 2. 先写记录（不带图），3. 再补图 —— 顺序和异步模式对齐
+    //
+    // ⚠️ 2026-09-17 把顺序调过来了。原来是「先处理图片，再写记录」，
+    // 于是图片环节一旦超时，函数被平台掐断，**记录压根没机会写，笔记内容全丢**。
+    // 实测踩到：同步模式跑满 60 秒被掐，飞书里一条记录都没有，
+    // 用户那头既没有记录也没有响应，完全无从判断发生了什么。
+    //
+    // 异步模式一直是「先写记录再 processImagesAndUpdate 补图」的正确顺序，
+    // 两条路不一致本身就是隐患。现在统一：**先保住文字，图片尽力而为。**
+    // 最坏情况也只是「有记录、图没进全」——那种情况可以重跑补图，
+    // 比整条丢失好得多。
+    const { recordId } = await saveToFeishu(
       finalAppToken,
       finalTableId,
       title,
       content,
       tags,
-      fileTokens,
+      [],
       saveUrl,
       authorName,
       viewCount,
@@ -1691,6 +1707,12 @@ export async function POST(request: NextRequest) {
       publishTime,
       finalRemark
     )
+
+    let fileTokens: (string | null)[] = []
+    if (images.length > 0 && recordId) {
+      const okCount = await processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
+      fileTokens = new Array(okCount).fill('ok')
+    }
 
     const duration = Date.now() - startTime
 
