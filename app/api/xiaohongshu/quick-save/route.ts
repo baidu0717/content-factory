@@ -1503,7 +1503,19 @@ function sanitizeJsonControlChars(raw: string): string {
  * 所以：成功进表用户自己看得见，**失败和「存了但图没进去」必须主动推一条**。
  * 通知失败本身不抛错——它只是观测手段，不该反过来影响主流程。
  */
-async function notifyFeishu(text: string): Promise<void> {
+async function notifyFeishu(text: string, silent = false): Promise<void> {
+  // 两道闸门，任意一道打开就不发：
+  //   silent           —— 单次请求级。测试/调试调用带上它，不打扰用户
+  //   FEISHU_NOTIFY_OFF —— 全局级。用户觉得吵了，在 Vercel 加这个环境变量即可全关
+  //
+  // 2026-09-17 加。起因：诊断端点每访问一次发 2 条，为等部署轮询了十几次，
+  // 往用户飞书群里灌了二十多条。通知是给**真实采集失败**用的，
+  // 不该被开发测试占用。
+  if (silent) return
+  if (process.env.FEISHU_NOTIFY_OFF === '1' || process.env.FEISHU_NOTIFY_OFF === 'true') {
+    console.log('[快捷保存-通知] 已被 FEISHU_NOTIFY_OFF 全局关闭，跳过')
+    return
+  }
   const hook = process.env.FEISHU_WEBHOOK_URL
   if (!hook) return
   try {
@@ -1540,7 +1552,7 @@ export async function POST(request: NextRequest) {
       // iOS 快捷指令有时会在字符串值内嵌入原始控制字符（如 URL 或 remark 末尾的换行等）
       body = JSON.parse(sanitizeJsonControlChars(rawBody))
     }
-    const { url, appToken, tableId, async: rawAsync, remark } = body
+    const { url, appToken, tableId, async: rawAsync, remark, silent } = body
 
     // 异步是默认模式，只有显式传 false / "false" 才走同步。
     //
@@ -1632,7 +1644,8 @@ export async function POST(request: NextRequest) {
               `📝 ${title}\n` +
               `📸 图片 ${imgOk}/${images.length} 张成功\n` +
               `🔗 ${saveUrl}\n\n` +
-              `可以重跑一次快捷指令补图。`
+              `可以重跑一次快捷指令补图。`,
+              silent === true
             )
           }
         } catch (err) {
@@ -1651,7 +1664,8 @@ export async function POST(request: NextRequest) {
             tip  = '去 apizero 后台确认密钥有效、额度没用完，然后更新 Vercel 环境变量 APIZERO_API_KEY（注意 Production 那一条）。'
           }
           await notifyFeishu(
-            `${head}\n\n🔗 ${url}\n\n💡 ${tip}\n\n详情：${msg.substring(0, 300)}`
+            `${head}\n\n🔗 ${url}\n\n💡 ${tip}\n\n详情：${msg.substring(0, 300)}`,
+            silent === true
           )
         }
       })
