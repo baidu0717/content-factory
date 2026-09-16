@@ -137,6 +137,24 @@ function isTransientFailure(errMsg: string): boolean {
 }
 
 /**
+ * 这次失败是不是「配置错误」——同样不该写兜底空记录，但原因和处理方式都不同。
+ *
+ * 2026-09-17 加：用户升级会员后旧的 sk_test_ 密钥被轮换失效，而 Vercel 环境变量
+ * 还是旧值，于是每采一条就往飞书写一条「⚠️ 待补充」。
+ *
+ * 这类和「笔记被删」有本质区别：
+ *   笔记被删   → 建记录留住链接是对的，内容确实要人工补
+ *   密钥失效   → 每采一条就产生一条垃圾记录，而真正该做的是去改配置
+ * 所以要单独分出来，提示「去更新密钥」而不是「去飞书补内容」。
+ *
+ *   4011 API Key 无效 / 4013 Key 已暂停 / 4014 IP 不在白名单 / 4015 此接口需要 Key
+ *   4022 余额不足 / 4030 今日免费额度已用完   ← 这两个也是「去后台处理」，不是「补内容」
+ */
+function isConfigFailure(errMsg: string): boolean {
+  return /\b(4011|4013|4014|4015|4022|4030)\b/.test(errMsg || '')
+}
+
+/**
  * 解析小红书链接（使用 apizero.cn video-parse API - 主力）
  */
 async function parseXiaohongshuWithApiZero(url: string) {
@@ -974,6 +992,14 @@ async function parseXiaohongshu(url: string): Promise<{
   //
   // 2026-09-16 加这个分叉的原因：当天 apizero 小红书通道整体挂了，每试一次就往飞书
   // 塞一条「⚠️ 待补充」，用户手动删了 10 条。上游故障过一阵就好，留垃圾记录没有意义。
+  if (isConfigFailure(azErr) || isConfigFailure(hhmErr)) {
+    console.error('[快捷保存] 🔑 API 凭据/额度有问题，不建兜底记录，需要去后台处理')
+    throw new Error(
+      `API_CONFIG_ERROR: 采集 API 的密钥或额度有问题，这条没采到。` +
+      `（未写入飞书，避免产生需要手动清理的空记录）\n详情: apizero: ${azErr.substring(0, 160)}`
+    )
+  }
+
   if (isTransientFailure(azErr) || isTransientFailure(hhmErr)) {
     console.error('[快捷保存] ⏸ 上游暂时不可用，不建兜底记录，让用户稍后重试')
     throw new Error(
@@ -1625,6 +1651,21 @@ export async function POST(request: NextRequest) {
 
     // 上游暂时不可用：这不是你的操作问题，也没有产生任何飞书记录。
     // 单独给一条人话提示，别让手机端看到一串错误码就以为要手动补内容。
+    // 密钥/额度问题：去后台改配置，不是补内容。也没有产生飞书记录。
+    if (msg.startsWith('API_CONFIG_ERROR')) {
+      return NextResponse.json({
+        success: false,
+        configError: true,
+        message:
+          `🔑 采集 API 的密钥或额度有问题，这条没采到\n\n` +
+          `✅ 飞书里没有留下空记录，不用手动清理\n` +
+          `💡 去 apizero 后台确认密钥是否有效、额度是否用完，\n` +
+          `   然后更新 Vercel 环境变量 APIZERO_API_KEY\n\n` +
+          `⏱️ 耗时${duration}ms`,
+        detail: msg
+      }, { status: 502 })
+    }
+
     if (msg.startsWith('UPSTREAM_UNAVAILABLE')) {
       return NextResponse.json({
         success: false,
