@@ -33,8 +33,34 @@ async function notify(text: string) {
   }
 }
 
+// 本地 .env.local 里有的、线上必须也有的环境变量。
+// 只报「有没有设」，不报值——避免泄露密钥。
+const REQUIRED_ENVS = [
+  'APIZERO_API_KEY',
+  'JUSTONE_API_TOKEN',
+  'FEISHU_APP_ID',
+  'FEISHU_APP_SECRET',
+  'FEISHU_APP_TOKEN',
+  'FEISHU_WEBHOOK_URL',
+  'FEISHU_DEFAULT_APP_TOKEN',
+  'FEISHU_DEFAULT_TABLE_ID',
+  'NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_KEY',
+  'NEXT_PUBLIC_XIAOHONGSHU_DETAIL_API_BASE',
+]
+
 export async function GET() {
   const stamp = new Date().toISOString().substring(11, 19)
+
+  // 环境变量体检：本地有、线上没有，是今天连踩两次的坑
+  //   APIZERO_API_KEY    改了 Development 没改 Production → 4011
+  //   FEISHU_WEBHOOK_URL 线上压根没配 → 通知静默失效
+  // 只看名字和前缀，不打印值。
+  const envs: Record<string, string> = {}
+  for (const k of REQUIRED_ENVS) {
+    const v = process.env[k]
+    envs[k] = !v ? '❌ 未设置'
+      : `✅ 已设置(${v.length}字符${v.startsWith('sk_') ? ' · ' + v.substring(0, 8) : ''})`
+  }
 
   // ① 同步发一条：确认 Vercel → 飞书 webhook 的链路本身是通的
   const syncResult = await notify(`🧪 [${stamp}] 第①条 · 同步发送（在 after 之前）`)
@@ -47,6 +73,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     stamp,
+    envs,
     syncResult,
     hint: '看飞书群：收到①②两条=after正常；只收到①=after不执行；一条都没有=webhook不通'
   })
