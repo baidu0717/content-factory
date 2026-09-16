@@ -1482,6 +1482,32 @@ function sanitizeJsonControlChars(raw: string): string {
   return result
 }
 
+/**
+ * 往飞书群发一条通知。只在**异步后台任务**里用。
+ *
+ * 2026-09-17 加。异步模式的死角：响应 1 秒内就返回 success:true，那时候后台
+ * 一点活都没干。之后不管是 apizero 被风控挡下、函数超时被掐、还是图片全部上传
+ * 失败，用户在手机上看到的都是同一句「采集成功」——四种结果一个提示，
+ * 出了问题完全没有可用信号（after() 的失败分支原来只有一行 console.error，
+ * 而 Vercel 日志用户看不到）。
+ *
+ * 所以：成功进表用户自己看得见，**失败和「存了但图没进去」必须主动推一条**。
+ * 通知失败本身不抛错——它只是观测手段，不该反过来影响主流程。
+ */
+async function notifyFeishu(text: string): Promise<void> {
+  const hook = process.env.FEISHU_WEBHOOK_URL
+  if (!hook) return
+  try {
+    await fetch(hook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg_type: 'text', content: { text } })
+    })
+  } catch (e) {
+    console.warn('[快捷保存-通知] 发送失败（不影响主流程）:', e)
+  }
+}
+
 // Vercel 函数最长执行时间（秒）。
 //
 // ⚠️ 2026-09-17 加。此前没设，用的是 Hobby 默认的 10 秒——而 after() 里的后台任务
@@ -1584,12 +1610,40 @@ export async function POST(request: NextRequest) {
             saveUrl, authorName, viewCount, likedCount, collectedCount, commentCount, publishTime,
             finalRemark
           )
+          let imgOk = 0
           if (images.length > 0 && recordId) {
-            await processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
+            imgOk = await processImagesAndUpdate(recordId, images, finalAppToken, finalTableId)
           }
           console.log('[快捷保存-后台] ✅ 保存成功:', title, apiUsed === 'fallback' ? '（兜底记录）' : '')
+
+          // 只在「存了但图没进全」时提醒——全成功的话表里看得见，不必打扰
+          if (images.length > 0 && imgOk < images.length) {
+            await notifyFeishu(
+              `⚠️ 笔记存进表了，但图片没进全\n\n` +
+              `📝 ${title}\n` +
+              `📸 图片 ${imgOk}/${images.length} 张成功\n` +
+              `🔗 ${saveUrl}\n\n` +
+              `可以重跑一次快捷指令补图。`
+            )
+          }
         } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
           console.error('[快捷保存-后台] ❌ 失败:', err)
+
+          // ⭐ 这条是整个异步模式的闭环：手机端已经回过「正在后台保存」了，
+          // 不推这条通知的话，用户永远不知道它其实失败了。
+          let head = '❌ 采集失败，飞书里没有这条记录'
+          let tip  = '过几分钟重跑一次快捷指令。'
+          if (msg.startsWith('UPSTREAM_UNAVAILABLE')) {
+            head = '⏸ 采集失败：解析服务上游暂时不可用'
+            tip  = '过几分钟重跑；如果同一条链接一直失败，换一条新链接试（同一篇被反复采会触发风控）。'
+          } else if (msg.startsWith('API_CONFIG_ERROR')) {
+            head = '🔑 采集失败：API 密钥或额度有问题'
+            tip  = '去 apizero 后台确认密钥有效、额度没用完，然后更新 Vercel 环境变量 APIZERO_API_KEY（注意 Production 那一条）。'
+          }
+          await notifyFeishu(
+            `${head}\n\n🔗 ${url}\n\n💡 ${tip}\n\n详情：${msg.substring(0, 300)}`
+          )
         }
       })
 
@@ -1753,7 +1807,7 @@ async function processImagesAndUpdate(
   imageUrls: string[],
   appToken: string,
   tableId: string
-): Promise<void> {
+): Promise<number> {   // 返回成功张数，调用方据此决定要不要推「图没进全」的通知
   console.log('[快捷保存-图片后台] 开始后台上传图片，记录ID:', recordId)
 
   // 1. 上传图片获取 file_token
@@ -1764,7 +1818,7 @@ async function processImagesAndUpdate(
 
   if (successCount === 0) {
     console.error('[快捷保存-图片后台] 所有图片上传失败，跳过更新记录')
-    return
+    return 0
   }
 
   // 2. 构建图片字段
@@ -1807,6 +1861,7 @@ async function processImagesAndUpdate(
   }
 
   console.log(`[快捷保存-图片后台] ✅ 图片更新成功: ${successCount}/${imageUrls.length} 张`)
+  return successCount
 }
 
 /**
